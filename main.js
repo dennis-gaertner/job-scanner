@@ -803,6 +803,7 @@ function handleEditableCockpitEdit_(e) {
     'manual_category',
     'manual_score_delta',
     'learn_from_feedback',
+    'manual_title',
   ];
 
   if (!editableFields.includes(field)) return;
@@ -900,6 +901,7 @@ function buildJobsCockpit_() {
 
     'title',
     'employer',
+    'first_seen',
     'job_age',
     'deadline',
     'days_to_deadline',
@@ -915,6 +917,7 @@ function buildJobsCockpit_() {
     'manual_category',
     'manual_score_delta',
     'learn_from_feedback',
+    'manual_title',
     'notes',
 
     'visibility_rank',
@@ -931,10 +934,21 @@ function buildJobsCockpit_() {
 
     const source = masterIdx.source != null ? (row[masterIdx.source] || '') : '';
     const location = masterIdx.location != null ? (row[masterIdx.location] || '') : '';
-    const title = masterIdx.title != null ? (row[masterIdx.title] || '') : '';
+    const originalTitle = masterIdx.title != null ? (row[masterIdx.title] || '') : '';
     const employer = masterIdx.employer != null ? (row[masterIdx.employer] || '') : '';
     const deadline = masterIdx.deadline != null ? row[masterIdx.deadline] : '';
     const url = masterIdx.url != null ? (row[masterIdx.url] || '') : '';
+
+    const mailDate = masterIdx.mail_date != null ? row[masterIdx.mail_date] : '';
+    const firstSeenAt = masterIdx.first_seen_at != null ? row[masterIdx.first_seen_at] : '';
+    const firstSeenDisplay = mailDate || firstSeenAt || '';
+
+    const manualTitle = view.manual_title || '';
+    const cleanManualTitle = manualTitle ? manualTitle.trim() : '';
+
+    const displayTitle = cleanManualTitle
+      ? cleanManualTitle + ' *'
+      : originalTitle;
 
     output.push([
       '',
@@ -943,8 +957,9 @@ function buildJobsCockpit_() {
       location,
       view.job_state,
 
-      title,
+      displayTitle,
       employer,
+      firstSeenDisplay,
       view.job_age,
       deadline,
       view.days_to_deadline,
@@ -960,6 +975,7 @@ function buildJobsCockpit_() {
       view.manual_category,
       view.manual_score_delta,
       view.learn_from_feedback,
+      manualTitle,
       view.notes,
 
       view.visibility_rank,
@@ -1179,6 +1195,7 @@ function loadJobsAllAndUserContext_() {
 
 
 //translate master-row plus optional user-row into final view
+//translate master-row plus optional user-row into final view
 function buildDerivedJobViewRow_(masterRow, ctx) {
   const { masterIdx, userIdx, userMap } = ctx;
 
@@ -1247,6 +1264,10 @@ function buildDerivedJobViewRow_(masterRow, ctx) {
     ? String(userRow[userIdx.learn_from_feedback] || '').trim()
     : '';
 
+  const manualTitle = userIdx.manual_title != null
+    ? String(userRow[userIdx.manual_title] || '').trim()
+    : '';
+
   // --- DERIVED: SCORE / CATEGORY ---
   const finalScore = scoreNormalized + manualScoreDelta;
   const finalCategory = manualCategory || categoryFromNormalizedScore_(finalScore);
@@ -1310,6 +1331,7 @@ function buildDerivedJobViewRow_(masterRow, ctx) {
     quick_flag: quickFlag,
     notes: notes,
     learn_from_feedback: learnFromFeedback,
+    manual_title: manualTitle,
 
     // derived extras
     job_age: jobAge,
@@ -1370,6 +1392,7 @@ function formatJobsCockpit_(sheet) {
   const locationCol = headers.indexOf('location') + 1;
   const titleCol = headers.indexOf('title') + 1;
   const employerCol = headers.indexOf('employer') + 1;
+  const firstSeenCol = headers.indexOf('first_seen') + 1;
   const jobAgeCol = headers.indexOf('job_age') + 1;
   const deadlineCol = headers.indexOf('deadline') + 1;
   const daysCol = headers.indexOf('days_to_deadline') + 1;
@@ -1380,6 +1403,7 @@ function formatJobsCockpit_(sheet) {
   const manualCategoryCol = headers.indexOf('manual_category') + 1;
   const manualDeltaCol = headers.indexOf('manual_score_delta') + 1;
   const learnCol = headers.indexOf('learn_from_feedback') + 1;
+  const manualTitleCol = headers.indexOf('manual_title') + 1;
   const notesCol = headers.indexOf('notes') + 1;
   const scoreNormCol = headers.indexOf('score_normalized') + 1;
   const finalScoreCol = headers.indexOf('final_score') + 1;
@@ -1422,7 +1446,6 @@ function formatJobsCockpit_(sheet) {
       .setBackground(null);
   }
 
-
   // --- Editierbare Spalten leicht einfärben ---
   const editableCols = [
     quickFlagCol,
@@ -1432,6 +1455,7 @@ function formatJobsCockpit_(sheet) {
     manualCategoryCol,
     manualDeltaCol,
     learnCol,
+    manualTitleCol,
     notesCol
   ].filter(c => c > 0);
 
@@ -1441,8 +1465,11 @@ function formatJobsCockpit_(sheet) {
     }
   });
 
-
   // --- Zahl-/Datumsformate ---
+  if (firstSeenCol > 0 && bodyRows > 0) {
+    sheet.getRange(2, firstSeenCol, bodyRows, 1).setNumberFormat('dd.mm.yyyy');
+  }
+
   if (jobAgeCol > 0 && bodyRows > 0) {
     sheet.getRange(2, jobAgeCol, bodyRows, 1).setNumberFormat('0');
   }
@@ -1483,6 +1510,7 @@ function formatJobsCockpit_(sheet) {
   if (jobStateRankCol > 0) sheet.setColumnWidth(jobStateRankCol, 70);
   if (titleCol > 0) sheet.setColumnWidth(titleCol, 260);
   if (employerCol > 0) sheet.setColumnWidth(employerCol, 150);
+  if (firstSeenCol > 0) sheet.setColumnWidth(firstSeenCol, 80);
   if (jobAgeCol > 0) sheet.setColumnWidth(jobAgeCol, 55);
   if (deadlineCol > 0) sheet.setColumnWidth(deadlineCol, 80);
   if (daysCol > 0) sheet.setColumnWidth(daysCol, 30);
@@ -1493,11 +1521,11 @@ function formatJobsCockpit_(sheet) {
   if (manualCategoryCol > 0) sheet.setColumnWidth(manualCategoryCol, 70);
   if (manualDeltaCol > 0) sheet.setColumnWidth(manualDeltaCol, 70);
   if (learnCol > 0) sheet.setColumnWidth(learnCol, 70);
+  if (manualTitleCol > 0) sheet.setColumnWidth(manualTitleCol, 180);
   if (notesCol > 0) sheet.setColumnWidth(notesCol, 220);
   if (workRankCol > 0) sheet.setColumnWidth(workRankCol, 70);
   if (categoryRankCol > 0) sheet.setColumnWidth(categoryRankCol, 70);
   if (uniqueKeyCol > 0) sheet.setColumnWidth(uniqueKeyCol, 160);
-
 
   // --- Conditional formatting Regeln ---
   const rules = [];
@@ -1514,8 +1542,6 @@ function formatJobsCockpit_(sheet) {
         .build()
     );
   }
-
-
 
   // Quick-Flag: A = rot, B = orange, ! = blau, X = grau
   if (quickFlagCol > 0 && bodyRows > 0) {
@@ -1562,7 +1588,6 @@ function formatJobsCockpit_(sheet) {
         .build()
     );
 
-    // Optional: alles andere Nicht-Leere leicht markieren
     rules.push(
       SpreadsheetApp.newConditionalFormatRule()
         .whenFormulaSatisfied(`=AND($${qCol}2<>"",$${qCol}2<>"A",$${qCol}2<>"B",$${qCol}2<>"!",$${qCol}2<>"X")`)
@@ -1604,31 +1629,28 @@ function formatJobsCockpit_(sheet) {
   }
 
   if (visibilityPrefCol > 0 && bodyRows > 0) {
-  const visRange = sheet.getRange(2, visibilityPrefCol, bodyRows, 1);
-  const visLetter = columnToLetter_(visibilityPrefCol);
-
-  rules.push(
-    SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied(`=$${visLetter}2="hidden"`)
-      .setBackground('#e5e7eb')
-      .setFontColor('#374151')
-      .setRanges([visRange])
-      .build()
-  );
-}
-
-  // days_to_deadline: bald fällig / überfällig
-  if (daysCol > 0 && bodyRows > 0) {
+    const visRange = sheet.getRange(2, visibilityPrefCol, bodyRows, 1);
+    const visLetter = columnToLetter_(visibilityPrefCol);
 
     rules.push(
       SpreadsheetApp.newConditionalFormatRule()
+        .whenFormulaSatisfied(`=$${visLetter}2="hidden"`)
+        .setBackground('#e5e7eb')
+        .setFontColor('#374151')
+        .setRanges([visRange])
+        .build()
+    );
+  }
+
+  // days_to_deadline: bald fällig / überfällig
+  if (daysCol > 0 && bodyRows > 0) {
+    rules.push(
+      SpreadsheetApp.newConditionalFormatRule()
         .whenNumberLessThanOrEqualTo(3)
-        .setBackground('#fdecea') // leicht rot
+        .setBackground('#fdecea')
         .setRanges([sheet.getRange(2, daysCol, bodyRows, 1)])
         .build()
     );
-
-
   }
 
   sheet.setConditionalFormatRules(rules);

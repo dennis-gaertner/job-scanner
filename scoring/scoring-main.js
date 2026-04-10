@@ -10,6 +10,7 @@ function scoreJobBySource_(job) {
   let rules = null;
   if (source === 'bundch') rules = CONFIG.scoring.bundch;
   else if (source === 'bundde') rules = CONFIG.scoring.bundde;
+  else if (source === 'bundat') rules = CONFIG.scoring.bundat;
   else if (source === 'oebb') rules = CONFIG.scoring.oebb;
   else if (source === 'sbb') rules = CONFIG.scoring.sbb;
   else if (source === 'eucareers') {
@@ -711,6 +712,7 @@ function getSourceThresholds_(source, sourceLabel) {
 
   if (src === 'bundch') return CONFIG.scoring.bundch.thresholds;
   if (src === 'bundde') return CONFIG.scoring.bundde.thresholds;
+  if (src === 'bundat') return CONFIG.scoring.bundat.thresholds;
   if (src === 'oebb') return CONFIG.scoring.oebb.thresholds;
   if (src === 'sbb') return CONFIG.scoring.sbb.thresholds;
   if (src === 'kn' || src === 'aa-kn') return CONFIG.scoring.kn.thresholds;

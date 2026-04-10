@@ -118,20 +118,53 @@ function getArchiveSpreadsheetId_() {
 function zzz_ADMIN_archiveCandidates_TO_EXTERNAL() {
   const sourceSs = SpreadsheetApp.getActiveSpreadsheet();
   const sourceSheet = sourceSs.getSheetByName(CONFIG.sheets.jobsAll);
-  if (!sourceSheet || sourceSheet.getLastRow() <= 1) return;
+  if (!sourceSheet || sourceSheet.getLastRow() <= 1) {
+    return {
+      mode: 'archive',
+      label_or_endpoint: 'external archive',
+      items_seen: 0,
+      jobs_parsed: 0,
+      rows_input_to_upsert: 0,
+      jobs_upserted: 0,
+      new_jobs: 0,
+      updated_jobs: 0,
+      relevant_count: 0,
+      maybe_count: 0,
+      ignore_count: 0,
+      detail_fetch_attempted: 0,
+      detail_fetch_count: 0,
+      status: 'ok',
+      message: 'No source rows to evaluate for archive.'
+    };
+  }
 
-    const archiveId = getArchiveSpreadsheetId_();
-    const archiveFile = DriveApp.getFileById(archiveId);
+  const archiveId = getArchiveSpreadsheetId_();
+  const archiveFile = DriveApp.getFileById(archiveId);
 
-    if (archiveFile.isTrashed()) {
+  if (archiveFile.isTrashed()) {
     throw new Error('Archive spreadsheet is in Trash.');
-    }
+  }
 
-    const archiveSs = SpreadsheetApp.openById(archiveId);
-    const archiveSheet = archiveSs.getSheetByName(ARCHIVE_SHEET_NAME);
-    if (!archiveSheet) {
+  const archiveSs = SpreadsheetApp.openById(archiveId);
+  const archiveSheet = archiveSs.getSheetByName(ARCHIVE_SHEET_NAME);
+  if (!archiveSheet) {
     throw new Error('Archive sheet not found: ' + ARCHIVE_SHEET_NAME);
-    }
+  }
+
+  //get data from Jobs_User
+  const userSheet = sourceSs.getSheetByName(CONFIG.sheets.jobsUser);
+  const userData = userSheet ? userSheet.getDataRange().getValues() : [];
+  const userHeaders = userData.length ? userData[0] : [];
+  const userRows = userData.length ? userData.slice(1) : [];
+  const userIdx = indexMap_(userHeaders);
+
+  const userMap = new Map();
+  if (userIdx.unique_key != null) {
+    userRows.forEach(row => {
+      const key = String(row[userIdx.unique_key] || '').trim();
+      if (key) userMap.set(key, row);
+    });
+  }
 
   const sourceData = sourceSheet.getDataRange().getValues();
   const sourceHeaders = sourceData[0];
@@ -146,7 +179,9 @@ function zzz_ADMIN_archiveCandidates_TO_EXTERNAL() {
   const sourceRowNumbersToDelete = [];
 
   sourceRows.forEach((row, i) => {
-    const decision = getArchiveDecision_(row, idx, now);
+    const uniqueKey = String(row[idx.unique_key] || '').trim();
+    const userRow = userMap.get(uniqueKey) || null;
+    const decision = getArchiveDecision_(row, idx, userRow, now);
     if (!decision.shouldArchive) return;
 
     const archivedRow = row.slice();
@@ -159,12 +194,28 @@ function zzz_ADMIN_archiveCandidates_TO_EXTERNAL() {
     }
 
     rowsToArchive.push(archivedRow);
-    sourceRowNumbersToDelete.push(i + 2); // +2 because sheet row numbering starts at 1 and row 1 is header
+    sourceRowNumbersToDelete.push(i + 2);
   });
 
   if (!rowsToArchive.length) {
     Logger.log('Archived to external: 0');
-    return;
+    return {
+      mode: 'archive',
+      label_or_endpoint: 'external archive',
+      items_seen: sourceRows.length,
+      jobs_parsed: rowsToArchive.length,
+      rows_input_to_upsert: 0,
+      jobs_upserted: 0,
+      new_jobs: 0,
+      updated_jobs: 0,
+      relevant_count: 0,
+      maybe_count: 0,
+      ignore_count: 0,
+      detail_fetch_attempted: 0,
+      detail_fetch_count: 0,
+      status: 'ok',
+      message: 'Archived to external: 0'
+    };
   }
 
   const archiveStartRow = archiveSheet.getLastRow() + 1;
@@ -179,8 +230,25 @@ function zzz_ADMIN_archiveCandidates_TO_EXTERNAL() {
   }
 
   Logger.log('Archived to external: ' + rowsToArchive.length);
-}
 
+  return {
+    mode: 'archive',
+    label_or_endpoint: 'external archive',
+    items_seen: sourceRows.length,
+    jobs_parsed: rowsToArchive.length,
+    rows_input_to_upsert: 0,
+    jobs_upserted: 0,
+    new_jobs: rowsToArchive.length,
+    updated_jobs: 0,
+    relevant_count: 0,
+    maybe_count: 0,
+    ignore_count: 0,
+    detail_fetch_attempted: 0,
+    detail_fetch_count: 0,
+    status: 'ok',
+    message: 'Archived to external: ' + rowsToArchive.length
+  };
+}
 
 
 function zzz_ADMIN_archiveCandidates_TO_EXTERNAL_TEST10() {
@@ -209,7 +277,9 @@ function zzz_ADMIN_archiveCandidates_TO_EXTERNAL_TEST10() {
   sourceRows.forEach((row, i) => {
     if (rowsToArchive.length >= 10) return;
 
-    const decision = getArchiveDecision_(row, idx, now);
+    const uniqueKey = String(row[idx.unique_key] || '').trim();
+    const userRow = userMap.get(uniqueKey) || null;
+    const decision = getArchiveDecision_(row, idx, userRow, now);
     if (!decision.shouldArchive) return;
 
     const archivedRow = row.slice();
@@ -241,50 +311,251 @@ function zzz_ADMIN_archiveCandidates_TO_EXTERNAL_TEST10() {
 }
 
 
-function archiveJobRow_(row, idx, reason, batchId, by) {
-  if (idx.status != null) {
-    row[idx.status] = 'archived';
+
+function restoreArchivedJobsByKeys_(uniqueKeys) {
+  if (!Array.isArray(uniqueKeys) || !uniqueKeys.length) {
+    throw new Error('uniqueKeys must be a non-empty array.');
   }
 
-  if (idx.archived_at != null) {
-    row[idx.archived_at] = new Date();
+  const normalizedKeys = new Set(
+    uniqueKeys
+      .map(k => String(k || '').trim())
+      .filter(Boolean)
+  );
+
+  if (!normalizedKeys.size) {
+    throw new Error('No valid unique keys provided.');
   }
 
-  if (idx.archive_reason != null) {
-    row[idx.archive_reason] = reason || 'manual';
+  const sourceSs = SpreadsheetApp.getActiveSpreadsheet();
+  const jobsAllSheet = sourceSs.getSheetByName(CONFIG.sheets.jobsAll);
+  if (!jobsAllSheet || jobsAllSheet.getLastRow() < 1) {
+    throw new Error('Jobs_All fehlt oder ist leer.');
   }
 
-  if (idx.archive_batch_id != null) {
-    row[idx.archive_batch_id] = batchId || '';
+  const archiveId = getArchiveSpreadsheetId_();
+  const archiveFile = DriveApp.getFileById(archiveId);
+  if (archiveFile.isTrashed()) {
+    throw new Error('Archive spreadsheet is in Trash.');
   }
 
-  if (idx.archived_by != null) {
-    row[idx.archived_by] = by || 'manual';
+  const archiveSs = SpreadsheetApp.openById(archiveId);
+  const archiveSheet = archiveSs.getSheetByName(ARCHIVE_SHEET_NAME);
+  if (!archiveSheet || archiveSheet.getLastRow() < 1) {
+    throw new Error('Archive sheet not found or empty: ' + ARCHIVE_SHEET_NAME);
   }
+
+  const jobsAllHeaders = jobsAllSheet.getRange(1, 1, 1, jobsAllSheet.getLastColumn()).getValues()[0];
+  const archiveHeaders = archiveSheet.getRange(1, 1, 1, archiveSheet.getLastColumn()).getValues()[0];
+  assertSameHeaders_(jobsAllHeaders, archiveHeaders);
+
+  const idx = indexMap_(archiveHeaders);
+
+  const jobsAllData = jobsAllSheet.getDataRange().getValues();
+  const existingActiveKeys = new Set(
+    jobsAllData.slice(1).map(row => String(row[idx.unique_key] || '').trim()).filter(Boolean)
+  );
+
+  const archiveData = archiveSheet.getDataRange().getValues();
+  const archiveRows = archiveData.slice(1);
+
+  const rowsToRestore = [];
+  const archiveRowNumbersToDelete = [];
+  const skippedAlreadyActive = [];
+  const notFound = new Set(normalizedKeys);
+
+  archiveRows.forEach((row, i) => {
+    const key = String(row[idx.unique_key] || '').trim();
+    if (!normalizedKeys.has(key)) return;
+
+    notFound.delete(key);
+
+    if (existingActiveKeys.has(key)) {
+      skippedAlreadyActive.push(key);
+      return;
+    }
+
+    const restoredRow = row.slice();
+
+    if (idx.archived_at != null) restoredRow[idx.archived_at] = '';
+    if (idx.archive_reason != null) restoredRow[idx.archive_reason] = '';
+
+    rowsToRestore.push(restoredRow);
+    archiveRowNumbersToDelete.push(i + 2);
+  });
+
+  if (!rowsToRestore.length) {
+    Logger.log('Restore: 0');
+    Logger.log('Not found: ' + JSON.stringify(Array.from(notFound)));
+    Logger.log('Already active: ' + JSON.stringify(skippedAlreadyActive));
+    return {
+      restored_count: 0,
+      not_found: Array.from(notFound),
+      already_active: skippedAlreadyActive
+    };
+  }
+
+  const startRow = jobsAllSheet.getLastRow() + 1;
+  jobsAllSheet
+    .getRange(startRow, 1, rowsToRestore.length, rowsToRestore[0].length)
+    .setValues(rowsToRestore);
+
+  SpreadsheetApp.flush();
+
+  for (let i = archiveRowNumbersToDelete.length - 1; i >= 0; i--) {
+    archiveSheet.deleteRow(archiveRowNumbersToDelete[i]);
+  }
+
+  Logger.log('Restore: ' + rowsToRestore.length);
+  Logger.log('Not found: ' + JSON.stringify(Array.from(notFound)));
+  Logger.log('Already active: ' + JSON.stringify(skippedAlreadyActive));
+
+  return {
+    restored_count: rowsToRestore.length,
+    not_found: Array.from(notFound),
+    already_active: skippedAlreadyActive
+  };
 }
 
 
-function unarchiveJobRow_(row, idx) {
-  if (idx.status != null) {
-    row[idx.status] = 'open';
-  }
-
-  if (idx.archived_at != null) {
-    row[idx.archived_at] = '';
-  }
-
-  if (idx.archive_reason != null) {
-    row[idx.archive_reason] = '';
-  }
-
-  if (idx.archive_batch_id != null) {
-    row[idx.archive_batch_id] = '';
-  }
-
-  if (idx.archived_by != null) {
-    row[idx.archived_by] = '';
-  }
+function zzz_ADMIN_restoreArchivedJobByKey() {
+  const uniqueKey = '1d271559b664833869072de0a24667fe';
+  restoreArchivedJobsByKeys_([uniqueKey]);
 }
+
+
+function zzz_ADMIN_restoreArchivedJobs_batch() {
+  restoreArchivedJobsByKeys_([
+    '1d271559b664833869072de0a24667fe',
+    '5ab19b3e70ed92e3096f975a9bbee7be'
+  ]);
+}
+
+
+function zzz_ADMIN_restoreWronglyArchivedJobs() {
+  restoreArchivedJobsByKeys_([
+    '1d271559b664833869072de0a24667fe'
+  ]);
+}
+
+
+
+
+function zzz_ADMIN_restoreArchivedJobsMissingFromAllButPresentInUser() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  const jobsAllSheet = ss.getSheetByName(CONFIG.sheets.jobsAll);
+  const jobsUserSheet = ss.getSheetByName(CONFIG.sheets.jobsUser);
+  if (!jobsAllSheet) throw new Error('Jobs_All fehlt.');
+  if (!jobsUserSheet) throw new Error('Jobs_User fehlt.');
+
+  const jobsAllData = jobsAllSheet.getDataRange().getValues();
+  const jobsAllHeaders = jobsAllData[0] || [];
+  const jobsAllRows = jobsAllData.slice(1);
+  const jobsAllIdx = indexMap_(jobsAllHeaders);
+
+  const jobsUserData = jobsUserSheet.getDataRange().getValues();
+  const jobsUserHeaders = jobsUserData[0] || [];
+  const jobsUserRows = jobsUserData.slice(1);
+  const jobsUserIdx = indexMap_(jobsUserHeaders);
+
+  if (jobsAllIdx.unique_key == null) throw new Error('Jobs_All: unique_key fehlt.');
+  if (jobsUserIdx.unique_key == null) throw new Error('Jobs_User: unique_key fehlt.');
+
+  const activeKeys = new Set(
+    jobsAllRows
+      .map(row => String(row[jobsAllIdx.unique_key] || '').trim())
+      .filter(Boolean)
+  );
+
+  const userKeysMissingInAll = new Set(
+    jobsUserRows
+      .map(row => String(row[jobsUserIdx.unique_key] || '').trim())
+      .filter(Boolean)
+      .filter(key => !activeKeys.has(key))
+  );
+
+  if (!userKeysMissingInAll.size) {
+    Logger.log('Restore by Jobs_User: 0');
+    return {
+      restored_count: 0,
+      candidate_keys: 0,
+      not_found_in_archive: []
+    };
+  }
+
+
+
+  const archiveId = getArchiveSpreadsheetId_();
+  const archiveFile = DriveApp.getFileById(archiveId);
+  if (archiveFile.isTrashed()) {
+    throw new Error('Archive spreadsheet is in Trash.');
+  }
+
+  const archiveSs = SpreadsheetApp.openById(archiveId);
+  const archiveSheet = archiveSs.getSheetByName(ARCHIVE_SHEET_NAME);
+  if (!archiveSheet || archiveSheet.getLastRow() < 1) {
+    throw new Error('Archive sheet not found or empty: ' + ARCHIVE_SHEET_NAME);
+  }
+
+  const archiveData = archiveSheet.getDataRange().getValues();
+  const archiveHeaders = archiveData[0] || [];
+  const archiveRows = archiveData.slice(1);
+  const archiveIdx = indexMap_(archiveHeaders);
+
+  assertSameHeaders_(jobsAllHeaders, archiveHeaders);
+
+  const rowsToRestore = [];
+  const archiveRowNumbersToDelete = [];
+  const foundInArchive = new Set();
+
+  archiveRows.forEach((row, i) => {
+    const key = String(row[archiveIdx.unique_key] || '').trim();
+    if (!userKeysMissingInAll.has(key)) return;
+
+    foundInArchive.add(key);
+
+    const restoredRow = row.slice();
+    if (archiveIdx.archived_at != null) restoredRow[archiveIdx.archived_at] = '';
+    if (archiveIdx.archive_reason != null) restoredRow[archiveIdx.archive_reason] = '';
+
+    rowsToRestore.push(restoredRow);
+    archiveRowNumbersToDelete.push(i + 2);
+  });
+
+  const notFoundInArchive = Array.from(userKeysMissingInAll).filter(key => !foundInArchive.has(key));
+
+  if (!rowsToRestore.length) {
+    Logger.log('Restore by Jobs_User: 0');
+    Logger.log('Not found in archive: ' + JSON.stringify(notFoundInArchive));
+    return {
+      restored_count: 0,
+      candidate_keys: userKeysMissingInAll.size,
+      not_found_in_archive: notFoundInArchive
+    };
+  }
+
+  const startRow = jobsAllSheet.getLastRow() + 1;
+  jobsAllSheet
+    .getRange(startRow, 1, rowsToRestore.length, rowsToRestore[0].length)
+    .setValues(rowsToRestore);
+
+  SpreadsheetApp.flush();
+
+  for (let i = archiveRowNumbersToDelete.length - 1; i >= 0; i--) {
+    archiveSheet.deleteRow(archiveRowNumbersToDelete[i]);
+  }
+
+  Logger.log('Restore by Jobs_User: ' + rowsToRestore.length);
+  Logger.log('Not found in archive: ' + JSON.stringify(notFoundInArchive));
+
+  return {
+    restored_count: rowsToRestore.length,
+    candidate_keys: userKeysMissingInAll.size,
+    not_found_in_archive: notFoundInArchive
+  };
+}
+
 
 
 function zzz_ADMIN_archiveOldOpenJobs() {
@@ -412,35 +683,36 @@ function zzz_ADMIN_archiveOldOpenJobs_DRYRUN() {
 
 
 
-function getArchiveDecision_(row, idx, now) {
+function getArchiveDecision_(row, idx, userRow, now) {
+  if (userRow && userRow.length) {
+    return { shouldArchive: false, reason: '' };
+  }
+
   const cutoffDeadline = new Date(now);
   cutoffDeadline.setDate(cutoffDeadline.getDate() - ARCHIVE_DEADLINE_BUFFER_DAYS);
 
   const cutoffStale = new Date(now);
   cutoffStale.setDate(cutoffStale.getDate() - ARCHIVE_STALE_DAYS);
 
-  const quickFlag = idx.quick_flag != null
-    ? String(row[idx.quick_flag] || '').trim()
-    : '';
-  if (quickFlag) return { shouldArchive: false, reason: '' };
+  // const quickFlag = idx.quick_flag != null
+  //   ? String(row[idx.quick_flag] || '').trim()
+  //   : '';
+  // if (quickFlag) return { shouldArchive: false, reason: '' };
 
-  const applicationStatus = idx.application_status != null
-    ? String(row[idx.application_status] || '').trim()
-    : '';
-  if (applicationStatus) return { shouldArchive: false, reason: '' };
+  // const applicationStatus = idx.application_status != null
+  //   ? String(row[idx.application_status] || '').trim()
+  //   : '';
+  // if (applicationStatus) return { shouldArchive: false, reason: '' };
 
-  const notes = idx.notes != null
-    ? String(row[idx.notes] || '').trim()
-    : '';
-  if (notes) return { shouldArchive: false, reason: '' };
+  // const notes = idx.notes != null
+  //   ? String(row[idx.notes] || '').trim()
+  //   : '';
+  // if (notes) return { shouldArchive: false, reason: '' };
 
   const deadline = idx.deadline != null && row[idx.deadline] instanceof Date
     ? row[idx.deadline]
     : null;
 
-  const firstSeen = idx.first_seen_at != null && row[idx.first_seen_at] instanceof Date
-    ? row[idx.first_seen_at]
-    : null;
 
   if (deadline) {
     if (deadline < cutoffDeadline) {
@@ -478,7 +750,9 @@ function zzz_ADMIN_archiveCandidates_DRYRUN() {
   const reasons = {};
 
   rows.forEach(row => {
-    const decision = getArchiveDecision_(row, idx, now);
+    const uniqueKey = String(row[idx.unique_key] || '').trim();
+    const userRow = userMap.get(uniqueKey) || null;
+    const decision = getArchiveDecision_(row, idx, userRow, now);
     if (!decision.shouldArchive) return;
 
     affected++;
@@ -505,7 +779,9 @@ function zzz_ADMIN_markArchiveCandidates_PREVIEW() {
   let marked = 0;
 
   rows.forEach(row => {
-    const decision = getArchiveDecision_(row, idx, now);
+    const uniqueKey = String(row[idx.unique_key] || '').trim();
+    const userRow = userMap.get(uniqueKey) || null;
+    const decision = getArchiveDecision_(row, idx, userRow, now);
 
     if (!decision.shouldArchive) return;
 

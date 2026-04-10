@@ -36,7 +36,9 @@ function scanAllJobSources() {
         duration_ms: finishedAt.getTime() - startedAt.getTime(),
         status: 'ok',
         message: ''
-      }, result));
+        }, result, {
+          source: name
+      }));
     } catch (e) {
       const finishedAt = new Date();
 
@@ -83,22 +85,33 @@ function scanAllJobSources() {
   safeRun_(() => scanJobRoomJobsToAll(runId), 'JobRoom');
   safeRun_(() => scanDbJobsToAll(runId), 'DB');
 
-  emailNewRelevantJobs(runId);
+Logger.log('BEFORE emailNewRelevantJobs');
+emailNewRelevantJobs(runId);
+Logger.log('AFTER emailNewRelevantJobs');
 
-  formatJobsAllScoreColumns_();
-  SpreadsheetApp.flush();
-Logger.log('Before buildJobsCockpit_');
-  safeRun_(() => buildJobsCockpit_(), 'SYSTEM: Cockpit');
-  //buildJobsCockpit_();
-Logger.log('After buildJobsCockpit_');
+Logger.log('BEFORE formatJobsAllScoreColumns_');
+formatJobsAllScoreColumns_();
+Logger.log('AFTER formatJobsAllScoreColumns_');
 
-  buildSourceHealthView_();
+SpreadsheetApp.flush();
 
-  buildScoringCockpit_();
+Logger.log('BEFORE buildJobsCockpit_');
+safeRun_(() => buildJobsCockpit_(), 'SYSTEM: Cockpit');
+Logger.log('AFTER buildJobsCockpit_');
 
-  if (ENABLE_AUTO_ARCHIVE) {
-    safeRun_(() => archiveCandidatesAfterScan_(), 'SYSTEM: Archive');
-  }
+Logger.log('BEFORE buildScoringCockpit_');
+buildScoringCockpit_();
+Logger.log('AFTER buildScoringCockpit_');
+
+if (ENABLE_AUTO_ARCHIVE) {
+  Logger.log('BEFORE archiveCandidatesAfterScan_');
+  safeRun_(() => archiveCandidatesAfterScan_(), 'SYSTEM: Archive');
+  Logger.log('AFTER archiveCandidatesAfterScan_');
+}
+
+Logger.log('BEFORE buildSourceHealthView_');
+buildSourceHealthView_();
+Logger.log('AFTER buildSourceHealthView_');
 
   //formatAllSheets();
 }
@@ -107,7 +120,7 @@ Logger.log('After buildJobsCockpit_');
 
 function archiveCandidatesAfterScan_() {
   validateArchiveTarget_();
-  zzz_ADMIN_archiveCandidates_TO_EXTERNAL();
+  return zzz_ADMIN_archiveCandidates_TO_EXTERNAL();
 }
 
 
@@ -2931,7 +2944,7 @@ function buildUniqueKey_(source, title, employer, location, url, rawSourceId) {
     }
   }
 
-  if (rawId && ['airbus', 'kn', 'aa-kn', 'aa-cities'].includes(src)) {
+  if (rawId && ['airbus', 'kn', 'aa-kn', 'aa-cities', 'bundat'].includes(src)) {
     const raw = [src, rawId].map(v => normalizeKeyPart_(v)).join('|');
     const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw);
     return digest.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
