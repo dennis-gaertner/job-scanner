@@ -26,6 +26,7 @@ function scoreJobBySource_(job) {
   else if (source === 'eurocontrol') rules = CONFIG.scoring.eurocontrol;
   else if (source === 'jobroom') rules = CONFIG.scoring.jobroom;
   else if (source === 'db') rules = CONFIG.scoring.db;
+  else if (source === 'stadtwien') rules = CONFIG.scoring.stadtwien;
   else if (source === 'aa-cities') rules = CONFIG.scoring.kn;
 
   if (!rules) {
@@ -715,14 +716,14 @@ function getSourceThresholds_(source, sourceLabel) {
   if (src === 'bundat') return CONFIG.scoring.bundat.thresholds;
   if (src === 'oebb') return CONFIG.scoring.oebb.thresholds;
   if (src === 'sbb') return CONFIG.scoring.sbb.thresholds;
-  if (src === 'kn' || src === 'aa-kn') return CONFIG.scoring.kn.thresholds;
-  if (src === 'zrh') return CONFIG.scoring.zrh.thresholds;
+  if (src === 'kn' || src === 'aa-kn' || src === 'aa-cities') return CONFIG.scoring.kn.thresholds;  if (src === 'zrh') return CONFIG.scoring.zrh.thresholds;
   if (src === 'airbus') return CONFIG.scoring.airbus.thresholds;
   if (src === 'lh') return CONFIG.scoring.lh.thresholds;
   if (src === 'skyguide') return CONFIG.scoring.skyguide.thresholds;
   if (src === 'eurocontrol') return CONFIG.scoring.eurocontrol.thresholds;
   if (src === 'jobroom') return CONFIG.scoring.jobroom.thresholds;
   if (src === 'db') return CONFIG.scoring.db.thresholds;
+  if (src === 'stadtwien') return CONFIG.scoring.stadtwien.thresholds;
 
   if (src === 'eucareers') {
     return sourceLabel === 'Crawler/EU-other'

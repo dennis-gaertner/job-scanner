@@ -1,3 +1,7 @@
+//recht karge quelle, zu wenig angaben, um überhaupt details einzulesen
+
+
+
 function testScanBundAtJobs() {
   const result = scanBundAtJobsToAll('test-bundat');
   Logger.log(JSON.stringify(result));
@@ -5,16 +9,43 @@ function testScanBundAtJobs() {
 
 
 
-function scanBundAtJobsToAll(runId) {
+function scanBundAtJobsToAll(runId, target) {
+  runId = runId || Utilities.getUuid();
+  target = target || 'prod';
+
+  if (!['prod', 'test'].includes(target)) {
+  throw new Error('Invalid target: ' + target);
+}
+
+
+  if (target === 'test') {
+    setupTestJobSheets_();
+  } else {
+    setupJobSheets_();
+  }
+
   const fetchedJobs = fetchBundAtViennaJobs_();
   Logger.log('BundAT fetched jobs: ' + fetchedJobs.length);
 
   if (!fetchedJobs.length) {
-    return {
+    const emptyResult = {
+      source: 'BundAT',
+      mode: 'api',
+      label_or_endpoint: 'BundAT',
+      items_seen: 0,
+      jobs_parsed: 0,
+      rows_input_to_upsert: 0,
       jobs_upserted: 0,
       new_jobs: 0,
-      updated_jobs: 0
+      updated_jobs: 0,
+      relevant_count: 0,
+      maybe_count: 0,
+      ignore_count: 0,
+      status: 'ok',
+      message: ''
     };
+    Logger.log(JSON.stringify(emptyResult));
+    return emptyResult;
   }
 
   const now = new Date();
@@ -24,7 +55,56 @@ function scanBundAtJobsToAll(runId) {
     return normalizeJobRecord_(job);
   });
 
-  return upsertJobsToAll_(normalizedRows);
+  const upsertStats = target === 'test'
+    ? upsertRowsToSheetByName_(
+        CONFIG.testSink.spreadsheetId,
+        CONFIG.testSink.sheets.bundAt,
+        normalizedRows
+      )
+    : upsertJobsToAll_(normalizedRows);
+
+  const idx = indexMap_(JOBS_ALL_COLUMNS);
+
+  let relevantCount = 0;
+  let maybeCount = 0;
+  let ignoreCount = 0;
+
+  normalizedRows.forEach(row => {
+    const category = String(row[idx.category] || '');
+    if (category === 'Relevant') relevantCount++;
+    else if (category === 'Vielleicht') maybeCount++;
+    else if (category === 'Ignorieren') ignoreCount++;
+  });
+
+  const result = {
+    source: 'BundAT',
+    mode: 'api',
+    label_or_endpoint: 'BundAT',
+    items_seen: fetchedJobs.length,
+    jobs_parsed: fetchedJobs.length,
+    rows_input_to_upsert: normalizedRows.length,
+    jobs_upserted: upsertStats.jobs_upserted,
+    new_jobs: upsertStats.new_jobs,
+    updated_jobs: upsertStats.updated_jobs,
+    relevant_count: relevantCount,
+    maybe_count: maybeCount,
+    ignore_count: ignoreCount,
+    status: 'ok',
+    message: ''
+  };
+
+  Logger.log(JSON.stringify(result));
+  return result;
+}
+
+
+function isStrictViennaBundAtJob_(job) {
+  const dienstort = cleanBundAtText_(job.Zzdienstort).toLowerCase();
+
+  // harter Filter: nur echte Wien-Treffer
+  if (dienstort.includes('wien')) return true;
+
+  return false;
 }
 
 
@@ -42,7 +122,9 @@ function fetchBundAtViennaJobs_() {
       '?sap-client=100' +
       '&$skip=' + skip +
       '&$top=' + pageSize +
-      '&$filter=' + encodeURIComponent("Regio eq 'W' and LogOpFts eq 'OR' and LogOpAts eq 'AND'") +
+      //'&$filter=' + encodeURIComponent("Regio eq 'W' and LogOpFts eq 'OR' and LogOpAts eq 'AND'") +
+      //because filter regio eq W returned also jobs outside vienne. not reliable.
+      "&$filter=" + encodeURIComponent("LogOpFts eq 'OR' and LogOpAts eq 'AND'")
       '&$expand=JobsToRegions' +
       '&$format=json';
 
@@ -66,7 +148,12 @@ function fetchBundAtViennaJobs_() {
     const json = JSON.parse(text);
     const results = (((json || {}).d || {}).results) || [];
 
-    allResults = allResults.concat(results);
+    const viennaResults = results.filter(isStrictViennaBundAtJob_);
+    allResults = allResults.concat(viennaResults);
+
+    
+    const rejected = results.filter(r => !isStrictViennaBundAtJob_(r));
+    Logger.log('Rejected (non-Vienna): ' + rejected.length);
 
     if (results.length < pageSize) {
       break;

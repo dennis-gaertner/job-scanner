@@ -2,12 +2,10 @@
 // DELME
 // *****************************************
 function delme(){
-Logger.log(
-  matchesConfiguredKeyword_(
-    normalizeText_('Servicetechniker:in Kabeltechnik'),
-    'servicetechniker*'
-  )
-);
+  //deleteJobsBySource_('stadtwien');
+  scanBundAtJobsToAll('test-bundat', 'test');
+  scanStadtWienJobsToAll('test-stadtwien', 'test');
+  scanAaCitiesCrawlerJobsToAll('test-aacities', 'test');
 }
 
 

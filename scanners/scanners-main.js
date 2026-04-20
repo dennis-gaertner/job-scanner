@@ -41,31 +41,35 @@ function scanAllJobSources() {
       }));
     } catch (e) {
       const finishedAt = new Date();
-
       Logger.log('ERROR in ' + name + ': ' + e);
-      appendScanLogRow_({
-        run_at: startedAt,
-        run_id: runId,
-        source: name,
-        mode: '',
-        label_or_endpoint: '',
-        mail_threads: 0,
-        mail_messages: 0,
-        items_seen: 0,
-        jobs_parsed: 0,
-        rows_input_to_upsert: 0,
-        jobs_upserted: 0,
-        new_jobs: 0,
-        updated_jobs: 0,
-        relevant_count: 0,
-        maybe_count: 0,
-        ignore_count: 0,
-        detail_fetch_attempted: 0,
-        detail_fetch_count: 0,
-        duration_ms: finishedAt.getTime() - startedAt.getTime(),
-        status: 'error',
-        message: String(e)
-      });
+
+      try {
+        appendScanLogRow_({
+          run_at: startedAt,
+          run_id: runId,
+          source: name,
+          mode: '',
+          label_or_endpoint: '',
+          mail_threads: 0,
+          mail_messages: 0,
+          items_seen: 0,
+          jobs_parsed: 0,
+          rows_input_to_upsert: 0,
+          jobs_upserted: 0,
+          new_jobs: 0,
+          updated_jobs: 0,
+          relevant_count: 0,
+          maybe_count: 0,
+          ignore_count: 0,
+          detail_fetch_attempted: 0,
+          detail_fetch_count: 0,
+          duration_ms: finishedAt.getTime() - startedAt.getTime(),
+          status: 'error',
+          message: String(e)
+        });
+      } catch (logError) {
+        Logger.log('FAILED TO WRITE SCAN_LOG for ' + name + ': ' + String(logError));
+      }
     }
   }
 
@@ -2944,7 +2948,7 @@ function buildUniqueKey_(source, title, employer, location, url, rawSourceId) {
     }
   }
 
-  if (rawId && ['airbus', 'kn', 'aa-kn', 'aa-cities', 'bundat'].includes(src)) {
+  if (rawId && ['airbus', 'kn', 'aa-kn', 'aa-cities', 'bundat', 'stadtwien'].includes(src)) {
     const raw = [src, rawId].map(v => normalizeKeyPart_(v)).join('|');
     const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw);
     return digest.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
@@ -3015,6 +3019,10 @@ function assertSheetHeadersExact_(sheet, expectedHeaders) {
 
 
 function ensureSheetWithHeaders_(ss, name, headers) {
+  if (!name || !String(name).trim()) {
+    throw new Error('ensureSheetWithHeaders_: invalid sheet name: ' + name);
+  }
+
   let sheet = ss.getSheetByName(name);
   if (!sheet) sheet = ss.insertSheet(name);
 

@@ -9,6 +9,7 @@ const CONFIG = {
     jobsCockpit: 'Jobs_Cockpit',
     notifiedAll: 'Notified_All',
     scanLog: 'Scan_Log',
+    scoringCockpit: 'Scoring_Cockpit',
   },
   gmailLabels: {
     bund: 'Jobs/BundCH',
@@ -37,7 +38,7 @@ const CONFIG = {
         'analyst': 8,
         'strategie': 9,
         'steuerung': 5,
-        'grundsatz': 8,
+        'grundsatz': 4,
         'daten': 4,
         'data': 4,
         'modell': 6,
@@ -48,8 +49,7 @@ const CONFIG = {
         'verwaltungsdigitalisierung': 5,
         'finanzen': 4,
         'haushalt': 4,
-        'referent': 4,
-        'referentin': 4
+        'referent*': 4,
       },
       negativeKeywords: {
         'pflege': -8,
@@ -68,8 +68,7 @@ const CONFIG = {
         'personalrecht': -5,
         'personalorganisation': -5,
         'rechtsstelle': -4,
-        'jurist': -4,
-        'juristin': -4
+        'jurist*': -6,
       },
       bonusPatterns: { },
       hardReject: [
@@ -89,37 +88,55 @@ const CONFIG = {
         'oekonom': 12,
         'volkswirtschaft': 8,
         'wirtschaft': 4,
+
         'analyse': 7,
         'analyst': 8,
+
         'strategie': 8,
         'strategisch': 6,
-        'steuerung': 5,
+        'steuerung': 6,          // leicht erhöht
         'grundsatz': 8,
+        'politik': 5,            // neu
         'policy': 6,
+
         'daten': 4,
         'data': 4,
         'modell': 6,
         'modellierung': 6,
         'statistik': 5,
+
         'wissenschaft': 4,
         'wissenschaftlich': 4,
         'forschung': 3,
+
         'monitoring': 2,
         'evaluation': 3,
+
         'regulierung': 5,
         'regulierungs': 5,
         'wettbewerb': 6,
         'wettbewerbs': 6,
+
         'finanzen': 4,
         'haushalt': 4,
         'budget': 4,
-        'referent': 5,
-        'referentin': 5,
-        'referats': 3,
+
         'koordination': 2,
         'international': 2,
-        'eu': 2
+        'eu': 2,
+
+        // 🔥 neu – Governance / Risk
+        'risiko': 6,
+        'risikomanagement': 7,
+        'governance': 6,
+        'compliance': 6,
+
+        // 🔥 Referenten
+        'referent': 5,
+        'referentin': 5,
+        'referats': 3
       },
+
       negativeKeywords: {
         'assistenz': -6,
         'assistent': -6,
@@ -127,17 +144,22 @@ const CONFIG = {
         'sachbearbeiter': -6,
         'administration': -4,
         'verwaltung': -2,
+
         'pfleger': -8,
         'pflege': -8,
+
         'pädagog': -6,
         'kindergarten': -8,
         'schule': -3,
         'lehrer': -6,
+
         'jurist': -4,
         'juristin': -4,
         'rechtsangelegenheiten': -4,
         'rechtsfragen': -4,
         'rechtsdienst': -4,
+
+        // ⚠️ entschärft
         'it administrator': -6,
         'it-administrator': -6,
         'administrator': -4,
@@ -146,20 +168,31 @@ const CONFIG = {
         'server': -4,
         'helpdesk': -6,
         'support': -4,
+
         'reinigung': -10,
         'küche': -10,
-        'hausdienst': -10
+        'hausdienst': -10,
+        'teamassistent': -8,
+        'teamassistenz': -8
       },
-      bonusPatterns: {},
+
+      bonusPatterns: {
+        'strategie': 2,
+        'steuerung': 2,
+        'grundsatz': 2,
+        'risiko': 2
+      },
+
       hardReject: [
         'sekretariat',
         'reinigung',
         'küche',
         'hausdienst'
       ],
+
       thresholds: {
-        relevant: 9,
-        maybe: 4
+        relevant: 12,
+        maybe: 5
       }
     },
     bundch: {
@@ -419,7 +452,9 @@ const CONFIG = {
         'transportpolizei',
         'polizist',
         'ausbildung',
-        'quereinstieg'
+        'quereinstieg',
+        'polier*',
+        'vorarbeiter*'
       ],
       thresholds: {
         relevant: 8,
@@ -1003,9 +1038,12 @@ const CONFIG = {
         'ökonom': 6,
         'oekonom': 6,
         'economist': 6,
+        'strateg*': 6,
         'economic': 3,
         'economics': 3,
         'volkswirtschaft': 5,
+        'risk*': 6,
+        'risiko*': 6,
         'wirtschaft': 3,
         'pricing': 5,
         'preis': 4,
@@ -1039,7 +1077,7 @@ const CONFIG = {
         'electricity market': 4,
         'revenue management': 3,
         // nur wenn kombiniert mit relevanten Kontexten:
-        'strategy manager': +2
+        //'strategy manager': +2
       },
       negativeKeywords: {
         'gallen': 0,   //tempting, but: dont want to punish "zürich, basel, st.gallen"     
@@ -1070,7 +1108,7 @@ const CONFIG = {
       hardReject: [],
       thresholds: {
         relevant: 6,
-        maybe: 4
+        maybe: 2
       }
     },
 
@@ -1192,9 +1230,140 @@ const CONFIG = {
         relevant: 6,
         maybe: 2
       }
-    }
-  },
+    },
+    stadtwien: {
+      positiveKeywords: {
+        'ökonom': 10,
+        'oekonom': 10,
+        'volkswirtschaft': 8,
+        'wirtschaft': 3,
 
+        'analyse': 6,
+        'analyst': 7,
+        'datenanalyse': 6,
+        'daten': 3,
+        'data': 3,
+
+        'strategie': 8,
+        'strategisch': 6,
+        'steuerung': 6,          // leicht erhöht
+        'grundsatz': 8,          // neu + stark
+        'politik': 5,            // neu
+        'policy': 5,
+
+        'koordination': 2,
+        'monitoring': 2,
+        'evaluation': 3,
+
+        'digitalisierung': 5,
+        'digital': 3,
+
+        'innovation': 3,
+        'entwicklung': 2,
+        'projekt': 2,
+        'projektmanagement': 3,
+        'prozessmanagement': 2,
+
+        'wissenschaft': 3,
+        'wissenschaftlich': 3,
+        'forschung': 2,
+
+        'regulierung': 4,
+        'wettbewerb': 5,
+
+        'finanzen': 3,
+        'budget': 3,
+        'haushalt': 3,
+
+        'mobilität': 3,
+        'verkehr': 2,
+        'infrastruktur': 2,
+        'umweltökonomie': 5,
+        'klima': 2,
+
+        // 🔥 neu – Governance / Risk
+        'risiko': 6,
+        'risikomanagement': 7,
+        'governance': 6,
+        'compliance': 6,
+
+        // 🔥 wichtig – Referentenrollen
+        'referent': 5,
+        'referentin': 5
+      },
+
+      negativeKeywords: {
+        'pflege': -8,
+        'krankenpflege': -8,
+        'gesundheits': -4,
+        'therapeut': -8,
+        'ergotherapeut': -10,
+        'physiotherapeut': -10,
+        'dgkp': -10,
+
+        'pädagog': -6,
+        'kindergarten': -8,
+        'schule': -3,
+        'lehrperson': -8,
+        'hochschullehrperson': -10,
+
+        'assistenz': -6,
+        'assistent': -6,
+        'sekretariat': -6,
+        'sachbearbeiter': -5,
+        'administration': -4,
+        'kanzlei': -6,
+
+        'reinigung': -10,
+        'küche': -10,
+        'hausarbeiter': -10,
+        'handwerk': -8,
+        'installateur': -10,
+        'fahrer': -8,
+
+        'polizei': -6,
+
+        'jurist': -4,
+        'juristin': -4,
+        'rechts': -2,
+
+        'marketing': -3,
+        'kundenservice': -4,
+
+        // ⚠️ entschärft
+        'it': -1,
+        'security': -1,
+        'cyber': -2,
+        'system engineer': -6,
+        'administrator': -5,
+        'support': -4
+      },
+
+      bonusPatterns: {
+        'stadt wien': 1,
+        'digitalisierung': 2,
+        'strategie': 2,
+        'steuerung': 2,      // erhöht
+        'grundsatz': 2,      // neu
+        'risiko': 2          // neu
+      },
+
+      hardReject: [
+        'ergotherapeut',
+        'physiotherapeut',
+        'dgkp',
+        'hochschullehrperson',
+        'reinigung',
+        'küche',
+        'installateur'
+      ],
+
+      thresholds: {
+        relevant: 11,
+        maybe: 5
+      }
+    },
+  },
   roleModel: {
     titlePositiveKeywords: {
     },
@@ -1237,6 +1406,9 @@ const CONFIG = {
       'altenpflege',
       'krankenpflege',
 
+      'facharzt*',
+      'fachärzt*',
+
       'volljurist*'
     ],
 
@@ -1254,7 +1426,8 @@ const CONFIG = {
       'oebb',
       'sbb',
       'kn',
-      'db'
+      'db',
+      'stadtwien',
     ]
   },
   notification: {
@@ -1334,6 +1507,18 @@ recency: {
   enabled: true,
   maxFetchesPerRun: 8
 },
+
+  testSink: {
+    spreadsheetId: '1pl3KVLXsDdrYpwyc_5pLjPN9f-5KsTd9oPnFIQ0edTM',
+    sheets: {
+      aaCities: 'AA_Cities_Test',
+      bundAt: 'BundAT_Test',
+      stadtWien: 'StadtWien_Test',
+    }
+  },
+
+
+
 };
 
 const JOBS_ALL_COLUMNS = [
@@ -1383,6 +1568,62 @@ const JOBS_ALL_LEGACY_COLUMNS = [
   'feedback_learning_version'
 ];
 
+
+const JOBS_COCKPIT_COLUMNS = [
+  'new_flag',
+  'quick_flag',
+  'source',
+  'location',
+  'job_state',
+  'display_title', // ← statt 'title'
+  'employer',
+  'first_seen',
+  'job_age',
+  'deadline',
+  'days_to_deadline',
+  'url',
+  'score_normalized',
+  'final_score',
+  'category',
+  'final_category',
+  'application_status',
+  'visibility_preference',
+  'manual_category',
+  'manual_score_delta',
+  'learn_from_feedback',
+  'manual_title',
+  'notes',
+  'visibility_rank',
+  'work_rank',
+  'job_state_rank',
+  'category_rank',
+  'unique_key'
+];
+
+
+const JOBS_USER_COLUMNS = [
+  'unique_key',
+  'quick_flag',
+  'application_status',
+  'job_state',
+  'visibility_preference',
+  'status',              // ⚠️ deprecated
+  'manual_title',
+  'notes',
+  'manual_category',
+  'manual_score_delta',
+  'learn_from_feedback',
+  'created_at',
+  'updated_at'
+];
+// status:
+// - DEPRECATED (legacy field from pre-split status model)
+// - DO NOT USE for new logic
+// - replaced by:
+//     - application_status
+//     - job_state
+//     - visibility_preference
+// - kept only for backward compatibility / migration
 
 const NOTIFIED_COLUMNS = [
 'unique_key',
@@ -1466,4 +1707,5 @@ let BUND_DETAIL_FETCH_COUNT = 0;
 
 
 const ENABLE_AUTO_ARCHIVE = true;
+
 

@@ -27,10 +27,11 @@ function setupJobSheets_() {
 
   ensureSheetWithHeaders_(ss, CONFIG.sheets.jobsAll, JOBS_ALL_COLUMNS);
   ensureSheetWithHeaders_(ss, CONFIG.sheets.notifiedAll, NOTIFIED_COLUMNS);
+  ensureSheetWithHeaders_(ss, CONFIG.sheets.scanLog, SCAN_LOG_COLUMNS);
 
-  if (CONFIG.sheets.scanLog) {
-    ensureSheetWithHeaders_(ss, CONFIG.sheets.scanLog, SCAN_LOG_COLUMNS);
-  }
+  ensureSheetWithHeaders_(ss, CONFIG.sheets.jobsUser, JOBS_USER_COLUMNS);
+  ensureSheetWithHeaders_(ss, CONFIG.sheets.jobsCockpit, JOBS_COCKPIT_COLUMNS);
+  ensureSheetWithHeaders_(ss, CONFIG.sheets.scoringCockpit, SCORING_COCKPIT_COLUMNS);
 }
 
 
@@ -824,6 +825,10 @@ function upsertUserField_(uniqueKey, field, value) {
   const sheet = SpreadsheetApp.getActive().getSheetByName('Jobs_User');
   if (!sheet) throw new Error('Sheet "Jobs_User" not found.');
 
+  if (field === 'status') {
+    throw new Error('Field "status" is deprecated and must not be written anymore.');
+  }
+
   const data = sheet.getDataRange().getValues();
   if (!data || !data.length) throw new Error('Jobs_User is empty.');
 
@@ -889,44 +894,8 @@ function buildJobsCockpit_() {
   const cockpitSheet = ss.getSheetByName('Jobs_Cockpit');
 
   const derived = buildDerivedJobViews_();
-
   const masterIdx = derived.masterIdx;
-
-  const cockpitHeaders = [
-    'new_flag',
-    'quick_flag',
-    'source',
-    'location',
-    'job_state',
-
-    'title',
-    'employer',
-    'first_seen',
-    'job_age',
-    'deadline',
-    'days_to_deadline',
-    'url',
-
-    'score_normalized',
-    'final_score',
-    'category',
-    'final_category',
-
-    'application_status',
-    'visibility_preference',
-    'manual_category',
-    'manual_score_delta',
-    'learn_from_feedback',
-    'manual_title',
-    'notes',
-
-    'visibility_rank',
-    'work_rank',
-    'job_state_rank',
-    'category_rank',
-    'unique_key'
-  ];
-
+  const cockpitHeaders = JOBS_COCKPIT_COLUMNS;
   const output = [cockpitHeaders];
 
   derived.rows.forEach(view => {
@@ -956,7 +925,6 @@ function buildJobsCockpit_() {
       source,
       location,
       view.job_state,
-
       displayTitle,
       employer,
       firstSeenDisplay,
@@ -964,12 +932,10 @@ function buildJobsCockpit_() {
       deadline,
       view.days_to_deadline,
       url,
-
       view.score_normalized,
       view.final_score,
       view.category,
       view.final_category,
-
       view.application_status,
       view.visibility_preference,
       view.manual_category,
@@ -977,7 +943,6 @@ function buildJobsCockpit_() {
       view.learn_from_feedback,
       manualTitle,
       view.notes,
-
       view.visibility_rank,
       view.work_rank,
       view.job_state_rank,
@@ -988,9 +953,39 @@ function buildJobsCockpit_() {
 
   cockpitSheet.clearContents();
   cockpitSheet.getRange(1, 1, output.length, output[0].length).setValues(output);
+  SpreadsheetApp.flush();
 
   applyNewFlagFormulas_(cockpitSheet);
+  SpreadsheetApp.flush();
+
   sortJobsCockpit_(cockpitSheet);
+  SpreadsheetApp.flush();
+
+
+
+
+//delme, for debugging
+const afterSort = cockpitSheet.getDataRange().getValues();
+const headers = afterSort[0];
+const stateIdx = headers.indexOf('job_state');
+const workIdx = headers.indexOf('work_rank');
+const stateRankIdx = headers.indexOf('job_state_rank');
+const titleIdx = headers.indexOf('display_title');
+const keyIdx = headers.indexOf('unique_key');
+
+Logger.log('TOP_AFTER_SORT=' + JSON.stringify(
+  afterSort.slice(1, 11).map(r => ({
+    display_title: r[titleIdx],
+    job_state: r[stateIdx],
+    work_rank: r[workIdx],
+    job_state_rank: r[stateRankIdx],
+    unique_key: r[keyIdx]
+  }))
+));
+
+
+
+
   formatJobsCockpit_(cockpitSheet);
 
   Logger.log('buildJobsCockpit_ DONE');
@@ -1111,43 +1106,47 @@ function sortJobsCockpit_(sheet) {
   const range = sheet.getDataRange();
   const headers = range.getValues()[0];
 
-const visibilityRankCol = headers.indexOf('visibility_rank') + 1;
-const workRankCol = headers.indexOf('work_rank') + 1;
-const jobStateRankCol = headers.indexOf('job_state_rank') + 1;
-const categoryRankCol = headers.indexOf('category_rank') + 1;
-const scoreCol = headers.indexOf('final_score') + 1;
-const daysCol = headers.indexOf('days_to_deadline') + 1;
+  const visibilityRankCol = headers.indexOf('visibility_rank') + 1;
+  const workRankCol = headers.indexOf('work_rank') + 1;
+  const jobStateRankCol = headers.indexOf('job_state_rank') + 1;
+  const categoryRankCol = headers.indexOf('category_rank') + 1;
+  const scoreCol = headers.indexOf('final_score') + 1;
+  const daysCol = headers.indexOf('days_to_deadline') + 1;
+
+  Logger.log(JSON.stringify({
+    visibilityRankCol,
+    workRankCol,
+    jobStateRankCol,
+    categoryRankCol,
+    scoreCol,
+    daysCol,
+    numRows: range.getNumRows(),
+    numCols: range.getNumColumns()
+  }));
 
   if (range.getNumRows() <= 1) return;
 
   const sortSpecs = [];
 
-  if (visibilityRankCol > 0) {
-    sortSpecs.push({ column: visibilityRankCol, ascending: true });
-  }
+  if (visibilityRankCol > 0) sortSpecs.push({ column: visibilityRankCol, ascending: true });
+  if (workRankCol > 0) sortSpecs.push({ column: workRankCol, ascending: true });
+  if (jobStateRankCol > 0) sortSpecs.push({ column: jobStateRankCol, ascending: true });
+  if (categoryRankCol > 0) sortSpecs.push({ column: categoryRankCol, ascending: true });
+  if (scoreCol > 0) sortSpecs.push({ column: scoreCol, ascending: false });
+  if (daysCol > 0) sortSpecs.push({ column: daysCol, ascending: true });
 
-  if (workRankCol > 0) {
-    sortSpecs.push({ column: workRankCol, ascending: true });
-  }
+  Logger.log('sortSpecs=' + JSON.stringify(sortSpecs));
 
+  range.offset(1, 0, range.getNumRows() - 1, range.getNumColumns()).sort(sortSpecs);
+  SpreadsheetApp.flush();
 
-  if (jobStateRankCol > 0) {
-    sortSpecs.push({ column: jobStateRankCol, ascending: true });
-  }
-
-  if (categoryRankCol > 0) {
-    sortSpecs.push({ column: categoryRankCol, ascending: true });
-  }
-
-  if (scoreCol > 0) {
-    sortSpecs.push({ column: scoreCol, ascending: false });
-  }
-
-  if (daysCol > 0) {
-    sortSpecs.push({ column: daysCol, ascending: true });
-  }
-
-  range.offset(1, 0, range.getNumRows() - 1).sort(sortSpecs);
+  const check = sheet.getDataRange().getValues().slice(1, 11).map(r => ({
+    job_state: r[headers.indexOf('job_state')],
+    work_rank: r[headers.indexOf('work_rank')],
+    job_state_rank: r[headers.indexOf('job_state_rank')],
+    display_title: r[headers.indexOf('display_title')]
+  }));
+  Logger.log('top10 after sort=' + JSON.stringify(check));
 }
 
 
@@ -1961,16 +1960,6 @@ function buildScoringCockpit_() {
     const uniqueKey = row[mIdx.unique_key] ?? '';
     const userRow = uniqueKey && userMap[uniqueKey] ? userMap[uniqueKey] : null;
 
-    //delme
-if (uniqueKey === 'b717c5829cf007a3ce85b30c536cfcea') {
-  Logger.log(JSON.stringify({
-    sample_unique_key: uniqueKey,
-    raw_hard_reject_hit: row[mIdx.hard_reject_hit],
-    raw_hard_reject_hits: row[mIdx.hard_reject_hits],
-    title: row[mIdx.title],
-    source: row[mIdx.source]
-  }, null, 2));
-}
 
     out.push([
       row[mIdx.source] ?? '',
@@ -2251,7 +2240,10 @@ function getNewFlagRank_(value) {
 }
 
 
-
+// DEPRECATED:
+// part of old monolithic status logic
+// currently unused
+// candidate for removal after full migration
 function computeAutoStatus_(row, idx) {
 
   const manualStatus = String(row[idx.status] || '').trim().toLowerCase();
@@ -2441,6 +2433,33 @@ function upsertJobsToAll_(newRows) {
     updated_jobs: updatedCount
   };
 }
+
+
+
+function deleteJobsBySource_(source) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.sheets.jobsAll);
+
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idx = indexMap_(headers);
+
+  const rowsToKeep = [headers];
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const rowSource = String(row[idx.source] || '');
+
+    if (rowSource !== source) {
+      rowsToKeep.push(row);
+    }
+  }
+
+  sheet.clearContents();
+  sheet.getRange(1, 1, rowsToKeep.length, rowsToKeep[0].length)
+    .setValues(rowsToKeep);
+}
+
 
 
 function appendNotifiedRows_(sheet, rows, idx, notifiedAt) {

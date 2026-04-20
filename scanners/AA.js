@@ -344,26 +344,33 @@ const AA_CITIES_SEARCH_CONFIGS = [
 
 
 
-function scanAaCitiesCrawlerJobsToAll(runId) {
-
+function scanAaCitiesCrawlerJobsToAll(runId, target) {
   runId = runId || Utilities.getUuid();
-  setupJobSheets_();
+  target = target || 'prod';
+
+  if (!['prod', 'test'].includes(target)) {
+    throw new Error('Invalid target: ' + target);
+  }
+
+  if (target === 'test') {
+    setupTestJobSheets_();
+  } else {
+    setupJobSheets_();
+  }
 
   const rows = [];
 
   const pageSize = 100;
-  const maxPagesLimit = 5; // erstmal konservativ
+  const maxPagesLimit = 5;
 
   let itemsSeen = 0;
   let parsedJobsCount = 0;
 
   AA_CITIES_SEARCH_CONFIGS.forEach(cfg => {
-
     let page = 1;
     let maxPages = 1;
 
     do {
-
       const json = fetchAaApiPage_(cfg.params, page, pageSize);
       const jobs = extractAaJobsFromApiResponse_(json);
 
@@ -383,7 +390,6 @@ function scanAaCitiesCrawlerJobsToAll(runId) {
       }
 
       jobs.forEach(job => {
-
         rows.push(normalizeJobRecord_({
           source: 'AA-Cities',
           source_label: 'Crawler/AA-Cities',
@@ -416,16 +422,21 @@ function scanAaCitiesCrawlerJobsToAll(runId) {
 
           run_id: runId
         }));
-
       });
 
       page++;
-
     } while (page <= maxPages);
 
   });
 
-  const upsertStats = upsertJobsToAll_(rows);
+  const upsertStats = target === 'test'
+    ? upsertRowsToSheetByName_(
+        CONFIG.testSink.spreadsheetId,
+        CONFIG.testSink.sheets.aaCities,
+        rows
+      )
+    : upsertJobsToAll_(rows);
+
   const idx = indexMap_(JOBS_ALL_COLUMNS);
 
   let relevantCount = 0;
@@ -434,32 +445,30 @@ function scanAaCitiesCrawlerJobsToAll(runId) {
 
   rows.forEach(row => {
     const category = String(row[idx.category] || '');
-
     if (category === 'Relevant') relevantCount++;
     else if (category === 'Vielleicht') maybeCount++;
     else if (category === 'Ignorieren') ignoreCount++;
   });
 
-  return {
+  const result = {
     source: 'AA-Cities',
     mode: 'api',
     label_or_endpoint: 'Crawler/AA-Cities',
-
     items_seen: itemsSeen,
     jobs_parsed: parsedJobsCount,
     rows_input_to_upsert: rows.length,
-
     jobs_upserted: upsertStats.jobs_upserted,
     new_jobs: upsertStats.new_jobs,
     updated_jobs: upsertStats.updated_jobs,
-
     relevant_count: relevantCount,
     maybe_count: maybeCount,
     ignore_count: ignoreCount,
-
     status: 'ok',
     message: ''
   };
+
+  Logger.log(JSON.stringify(result));
+  return result;
 }
 
 
@@ -803,3 +812,5 @@ function dedupeAaJobsBySourceId_(jobs) {
     return true;
   });
 }
+
+
