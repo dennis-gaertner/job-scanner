@@ -24,28 +24,7 @@ function debugStadtWienUrlInTestSink_() {
 
 
 
-function rescoreAllTestSheets(sourceInput) {
-  const results = [
-    rescoreSheetBySpreadsheetId_(
-      CONFIG.testSink.spreadsheetId,
-      CONFIG.testSink.sheets.bundAt,
-      sourceInput
-    ),
-    rescoreSheetBySpreadsheetId_(
-      CONFIG.testSink.spreadsheetId,
-      CONFIG.testSink.sheets.stadtWien,
-      sourceInput
-    ),
-    rescoreSheetBySpreadsheetId_(
-      CONFIG.testSink.spreadsheetId,
-      CONFIG.testSink.sheets.aaCities,
-      sourceInput
-    )
-  ];
 
-  Logger.log(JSON.stringify(results, null, 2));
-  return results;
-}
 
 
 function previewAaCitiesApi() {

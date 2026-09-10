@@ -1,0 +1,7 @@
+let LEARNING_CACHE = null;
+let BUND_DETAIL_FETCH_COUNT = 0;
+
+
+const ENABLE_AUTO_ARCHIVE = true;
+
+
