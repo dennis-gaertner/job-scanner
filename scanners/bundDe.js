@@ -162,11 +162,11 @@ function parseBundDeRssDescription_(html) {
   const deadlineMatch = clean.match(/Bewerbungsfrist:\s*<strong>(.*?)<\/strong>/i);
 
   const employer = employerMatch
-    ? cleanBundDeText_(decodeNumericHtmlEntities_(htmlDecode_(stripHtmlZrh_(employerMatch[1]))))
+    ? cleanBundDeText_(decodeNumericHtmlEntities_(htmlDecode_(stripHtml_(employerMatch[1]))))
     : '';
 
   const location = locationMatch
-    ? cleanBundDeText_(decodeNumericHtmlEntities_(htmlDecode_(stripHtmlZrh_(locationMatch[1]))))
+    ? cleanBundDeText_(decodeNumericHtmlEntities_(htmlDecode_(stripHtml_(locationMatch[1]))))
     : '';
 
   const deadlineText = deadlineMatch
@@ -450,10 +450,10 @@ function extractBundDeJobsFromRaw_(raw) {
 
     const url = canonicalizeBundDeUrl_(rawUrl);
 
-    const title = cleanBundDeText_(htmlDecode_(stripHtmlZrh_(match[2])));
-    const employer = cleanBundDeText_(htmlDecode_(stripHtmlZrh_(match[3])));
-    const publishedText = cleanBundDeText_(htmlDecode_(stripHtmlZrh_(match[4])));
-    const deadlineText = cleanBundDeText_(htmlDecode_(stripHtmlZrh_(match[5])));
+    const title = cleanBundDeText_(htmlDecode_(stripHtml_(match[2])));
+    const employer = cleanBundDeText_(htmlDecode_(stripHtml_(match[3])));
+    const publishedText = cleanBundDeText_(htmlDecode_(stripHtml_(match[4])));
+    const deadlineText = cleanBundDeText_(htmlDecode_(stripHtml_(match[5])));
 
     const mailDate = parseBundDeDate_(publishedText);
     const deadline = parseBundDeDate_(deadlineText);
@@ -563,7 +563,7 @@ function extractBundDeLocationFromDetailHtml_(html) {
     raw = raw.replace(/<br\s*\/?>[\s\S]*$/i, ' ');
     raw = raw.replace(/<a[^>]*>[\s\S]*?<\/a>/gi, ' ');
 
-    const value = cleanBundDeText_(htmlDecode_(stripHtmlZrh_(raw)));
+    const value = cleanBundDeText_(htmlDecode_(stripHtml_(raw)));
     if (value) return value;
   }
 
@@ -582,11 +582,11 @@ function extractBundDeGradeFromDetailHtml_(html) {
   const dtMatch = source.match(/<dt>\s*Laufbahn\s*\/\s*Entgeltgruppe\s*<\/dt>\s*<dd>([\s\S]*?)<\/dd>/i);
   if (!dtMatch) return '';
 
-  return cleanBundDeText_(htmlDecode_(stripHtmlZrh_(dtMatch[1])));
+  return cleanBundDeText_(htmlDecode_(stripHtml_(dtMatch[1])));
 }
 
 function extractBundDeDetailText_(html) {
-  const text = cleanBundDeText_(htmlDecode_(stripHtmlZrh_(String(html || ''))));
+  const text = cleanBundDeText_(htmlDecode_(stripHtml_(String(html || ''))));
   return text ? text.slice(0, 5000) : '';
 }
 

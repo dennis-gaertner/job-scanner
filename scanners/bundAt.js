@@ -252,3 +252,14 @@ function cleanBundAtText_(value) {
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+
+
+function rescoreBundAtTest_() {
+  const result = rescoreSheetBySpreadsheetId_(
+    CONFIG.testSink.spreadsheetId,
+    CONFIG.testSink.sheets.bundAt
+  );
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}

@@ -1,11 +1,50 @@
 // *****************************************
 // DELME
 // *****************************************
-function delme(){
-  //deleteJobsBySource_('stadtwien');
-  scanBundAtJobsToAll('test-bundat', 'test');
-  scanStadtWienJobsToAll('test-stadtwien', 'test');
-  scanAaCitiesCrawlerJobsToAll('test-aacities', 'test');
+
+
+
+function debugStadtWienUrlInTestSink_() {
+  const ss = SpreadsheetApp.openById(CONFIG.testSink.spreadsheetId);
+  const sheet = ss.getSheetByName(CONFIG.testSink.sheets.stadtWien);
+  const data = sheet.getDataRange().getValues();
+  const idx = indexMap_(data[0]);
+
+  ['54526', '54962', '54783', '54896'].forEach(id => {
+    const row = data.slice(1).find(r => String(r[idx.raw_source_id]) === id);
+    Logger.log(JSON.stringify({
+      raw_source_id: id,
+      unique_key: row ? row[idx.unique_key] : 'NOT FOUND',
+      url: row ? row[idx.url] : 'NOT FOUND',
+      last_seen_at: row ? row[idx.last_seen_at] : '',
+      run_id: row ? row[idx.run_id] : ''
+    }));
+  });
+}
+
+
+
+function rescoreAllTestSheets(sourceInput) {
+  const results = [
+    rescoreSheetBySpreadsheetId_(
+      CONFIG.testSink.spreadsheetId,
+      CONFIG.testSink.sheets.bundAt,
+      sourceInput
+    ),
+    rescoreSheetBySpreadsheetId_(
+      CONFIG.testSink.spreadsheetId,
+      CONFIG.testSink.sheets.stadtWien,
+      sourceInput
+    ),
+    rescoreSheetBySpreadsheetId_(
+      CONFIG.testSink.spreadsheetId,
+      CONFIG.testSink.sheets.aaCities,
+      sourceInput
+    )
+  ];
+
+  Logger.log(JSON.stringify(results, null, 2));
+  return results;
 }
 
 
@@ -129,7 +168,6 @@ function migrateKnToAaKnInJobsAll() {
     source_label_updated: sourceLabelUpdated
   };
 }
-
 
 
 

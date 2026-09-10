@@ -1,3 +1,71 @@
+function zzz_ADMIN_enrichExistingEuTitles() {
+  const ss = SpreadsheetApp.getActive();
+  const sheet = ss.getSheetByName(CONFIG.sheets.jobsAll);
+  if (!sheet) throw new Error('Jobs_All not found.');
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return;
+
+  const headers = data[0];
+  const idx = indexMap_(headers);
+
+  ['source', 'title', 'domain', 'raw_source_id'].forEach(col => {
+    if (idx[col] == null) {
+      throw new Error('Jobs_All missing column "' + col + '".');
+    }
+  });
+
+  let changed = 0;
+
+  for (let r = 1; r < data.length; r++) {
+    const source = String(data[r][idx.source] || '').trim();
+    if (source !== 'EUCAREERS') continue;
+
+    const oldTitle = String(data[r][idx.title] || '').trim();
+    const domain = String(data[r][idx.domain] || '').trim();
+    const rawSourceId = String(data[r][idx.raw_source_id] || '').trim();
+
+    const newTitle = buildEuDisplayTitle_(oldTitle, domain, rawSourceId);
+
+    if (newTitle && newTitle !== oldTitle) {
+      sheet.getRange(r + 1, idx.title + 1).setValue(newTitle);
+      changed++;
+    }
+  }
+
+  Logger.log('EU titles enriched: ' + changed);
+}
+
+
+function zzz_ADMIN_cleanExistingJobTitlesHtmlDELME() {
+  const ss = SpreadsheetApp.getActive();
+  const sheet = ss.getSheetByName(CONFIG.sheets.jobsAll);
+  if (!sheet) throw new Error('Jobs_All not found.');
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return;
+
+  const headers = data[0];
+  const idx = indexMap_(headers);
+
+  if (idx.title == null) throw new Error('Jobs_All missing title column.');
+
+  let changed = 0;
+
+  for (let r = 1; r < data.length; r++) {
+    const oldTitle = data[r][idx.title];
+    const newTitle = stripHtml_(oldTitle);
+
+    if (String(oldTitle || '') !== String(newTitle || '')) {
+      sheet.getRange(r + 1, idx.title + 1).setValue(newTitle);
+      changed++;
+    }
+  }
+
+  Logger.log('Cleaned existing Jobs_All titles: ' + changed);
+}
+
+
 function zzz_ADMIN_reorderJobsAllToCurrentSchema() {
 
   const ui = SpreadsheetApp.getUi();

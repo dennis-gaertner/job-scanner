@@ -634,10 +634,10 @@ function extractZrhJobsFromHtml_(html) {
     const title = htmlDecode_(match[2].trim());
     
     const descMatch = block.match(/<span class="shortdescription"[^>]*>([\s\S]*?)<\/span>/i);
-    const description = descMatch ? htmlDecode_(stripHtmlZrh_(descMatch[1])) : '';
+    const description = descMatch ? htmlDecode_(stripHtml_(descMatch[1])) : '';
     
     const tagMatches = [...block.matchAll(/<span style="display:inline-block;[\s\S]*?>([\s\S]*?)<\/span>/gi)]
-    .map(m => htmlDecode_(stripHtmlZrh_(m[1])))
+    .map(m => htmlDecode_(stripHtml_(m[1])))
     .map(s => s.trim())
     .filter(Boolean);
     
@@ -779,7 +779,7 @@ function extractAirbusJobsFromHtml_(html) {
   while ((match = linkRegex.exec(cleaned)) !== null) {
     const fullMatch = match[0];
     const url = htmlDecode_(match[1].trim());
-    const title = htmlDecode_(stripHtmlKn_(match[2]).trim());
+    const title = htmlDecode_(stripHtml_(match[2]).trim());
     const rawSourceId = extractWorkdayJobIdFromUrl_(url);
 
     if (!title || !url || !rawSourceId) continue;
@@ -1031,382 +1031,6 @@ function rescoreAirbus() {
 // 8. CRAWLER / API-QUELLEN
 // *****************************************
 
-// *****************************************
-// EU
-// *****************************************
-
-
-function buildEuCareersUrl_(page) {
-  return `https://eu-careers.europa.eu/en/non-permanent-contract-ec?domain=&field_epso_type_of_contract_target_id=All&field_epso_location_target_id=All&order=created&sort=desc&page=${page}`;
-}
-
-function buildEuOtherUrl_(page) {
-  const base = 'https://eu-careers.europa.eu/en/temporary-agents-other-institutions-vacancies';
-  const params =
-  '?domain=' +
-  '&field_epso_type_of_contract_target_id=All' +
-  '&field_epso_location_target_id=All' +
-  '&institution=All' +
-  '&order=created' +
-  '&sort=desc';
-  
-  if (!page) return base + params;
-  return base + params + '&page=' + page;
-}
-
-
-
-function extractEuCareersJobsFromHtml_(html, kind) {
-  const jobs = [];
-  
-  const inferredKind = kind || (
-  /temporary-agents-other-institutions-vacancies/i.test(String(html || ''))
-  ? 'other'
-  : 'commission'
-  );
-  
-  const cleaned = String(html || '')
-  .replace(/\r?\n/g, ' ')
-  .replace(/\s+/g, ' ');
-  
-  const rowRegex = /<tr[^>]*>[\s\S]*?<a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?<\/tr>/gi;
-  
-  let match;
-  
-  while ((match = rowRegex.exec(cleaned)) !== null) {
-    const rowHtml = match[0];
-    const url = absolutizeEuUrl_(match[1].trim());
-    const title = htmlDecode_(match[2].trim());
-    
-    if (!title || title.length < 5) continue;
-    if (/cookies policy|privacy policy/i.test(title)) continue;
-    if (!/eu-careers\.europa\.eu\/en\/job-opportunities\//i.test(url)) continue;
-    
-    const tdValues = [...rowHtml.matchAll(/<td[^>]*>\s*([\s\S]*?)\s*<\/td>/gi)]
-    .map(m => htmlDecode_(stripHtmlEu_(m[1])).replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
-    
-    let domain = '';
-    let dg = '';
-    let grade = '';
-    let location = '';
-    let publicationDate = '';
-    let deadline = '';
-    let employer = '';
-    
-    if (inferredKind === 'commission') {
-      // Bestehende Commission-Logik weitgehend behalten
-      tdValues.forEach(value => {
-        if (!grade && /\b(FG\s*[IVX]+|AD\s*\d|AST(?:-SC)?(?:\s*\d)?(?:,\s*AST(?:-SC)?\s*\d)*)/i.test(value)) {
-          grade = value;
-          return;
-        }
-        
-        if (!publicationDate && /\b\d{2}\/\d{2}\/\d{4}\b/.test(value) && !/\d{2}:\d{2}/.test(value)) {
-          publicationDate = value;
-          return;
-        }
-        
-        if (!deadline && /\b\d{2}\/\d{2}\/\d{4}\b/.test(value) && /\d{2}:\d{2}/.test(value)) {
-          deadline = value;
-          return;
-        }
-        
-        if (
-        !location &&
-        /\([A-Za-z]+\)$/.test(value) &&
-        !/^\([A-Z]+\)/.test(value)
-        ) {
-          location = value;
-          return;
-        }
-      });
-      
-      const urlTail = url.toLowerCase();
-      
-      if (/ecfin/.test(urlTail)) dg = dg || 'ECFIN';
-      else if (/digit/.test(urlTail)) dg = dg || 'DIGIT';
-      else if (/cnect/.test(urlTail)) dg = dg || 'CNECT';
-      else if (/budg/.test(urlTail)) dg = dg || 'BUDG';
-      else if (/comp/.test(urlTail)) dg = dg || 'COMP';
-      else if (/move/.test(urlTail)) dg = dg || 'MOVE';
-      else if (/trade/.test(urlTail)) dg = dg || 'TRADE';
-      else if (/sj-/.test(urlTail)) dg = dg || 'SJ';
-      else if (/sg-/.test(urlTail)) dg = dg || 'SG';
-      else if (/intpa/.test(urlTail)) dg = dg || 'INTPA';
-      
-      if (/\b(economist|economic|finance|statistics|statistician)\b/i.test(title)) {
-        domain = 'Economics, Finance and Statistics';
-      } else if (/\b(legal|law)\b/i.test(title)) {
-        domain = 'Legal Affairs';
-      } else if (/\b(ict|it|security|digital|project)\b/i.test(title)) {
-        domain = 'Information Technologies';
-      }
-      
-      employer = 'European Commission';
-      
-    } else {
-      // EU-other: positionsbasiert + leichte Fallbacks
-      // Typische Reihenfolge:
-      // [domain?] [institution?] [grade?] [location?] [publication date] [deadline]
-      
-      tdValues.forEach(value => {
-        if (!grade && /\b(FG\s*[IVX]+|AD\s*\d+|AST(?:-SC)?\s*\d+)\b/i.test(value)) {
-          grade = value;
-          return;
-        }
-        
-        if (!publicationDate && /^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
-          publicationDate = value;
-          return;
-        }
-        
-        if (!deadline && /^\d{2}\/\d{2}\/\d{4}(?:\s*-\s*\d{2}:\d{2})?$/.test(value)) {
-          // Wenn publicationDate schon belegt ist, ist ein zweites Datumsfeld sehr wahrscheinlich deadline
-          if (publicationDate) {
-            deadline = value;
-            return;
-          }
-        }
-        
-        if (
-        !location &&
-        /\([A-Za-z]+\)$/.test(value) &&
-        !/^\([A-Z]+\)/.test(value)
-        ) {
-          location = value;
-          return;
-        }
-        
-        if (
-        !employer &&
-        /^\([A-Z]+\)\s+/.test(value)
-        ) {
-          employer = value;
-          return;
-        }
-        
-        if (
-        !domain &&
-        /economics|finance|statistics|legal affairs|information technologies/i.test(value)
-        ) {
-          domain = value;
-          return;
-        }
-      });
-      
-      // Falls domain aus Tabelle nicht sauber kam: Titelheuristik
-      if (!domain) {
-        if (/\b(economist|economic|finance|statistics|statistician)\b/i.test(title)) {
-          domain = 'Economics, Finance and Statistics';
-        } else if (/\b(legal|law)\b/i.test(title)) {
-          domain = 'Legal Affairs';
-        } else if (/\b(ict|it|security|digital|project)\b/i.test(title)) {
-          domain = 'Information Technologies';
-        }
-      }
-      
-      // Fallback: employer aus URL nicht ideal, daher lieber generisch
-      // Employer-Erkennung für EU-other
-      if (!employer) {
-        
-        // 1. Klassische EU-Agentur-Schreibweise: "(EDA) European Defence Agency"
-        const agencyMatch = tdValues.find(v =>
-        /^\([A-Z]+\)\s+/.test(v)
-        );
-        
-        if (agencyMatch) {
-          employer = agencyMatch;
-        }
-      }
-      
-      // 2. Fallback: Institution ohne Klammerkürzel
-      if (!employer) {
-        
-        const employerFallback = tdValues.find(value => {
-          if (value === title) return false;
-          if (value === domain) return false;
-          if (value === grade) return false;
-          if (value === location) return false;
-          if (value === publicationDate) return false;
-          if (value === deadline) return false;
-          
-          if (/^\d{2}\/\d{2}\/\d{4}/.test(value)) return false;
-          if (/\b(FG\s*[IVX]+|AD\s*\d+|AST(?:-SC)?\s*\d+)\b/i.test(value)) return false;
-          if (/\([A-Za-z]+\)$/.test(value)) return false;
-          
-          return value.length > 4;
-        });
-        
-        if (employerFallback) {
-          employer = employerFallback;
-        }
-      }
-      
-      // 3. letzter Fallback
-      if (!employer) {
-        employer = 'EU Agency';
-      }
-    }
-    
-    jobs.push({
-      title,
-      domain,
-      dg,
-      grade,
-      location,
-      publication_date: parseEuDate_(publicationDate),
-      deadline: parseEuDeadline_(deadline || publicationDate),
-      employer,
-      url,
-      rawSnippet: [title, employer, location, domain, dg, grade, publicationDate, deadline]
-      .filter(Boolean)
-      .join(' | ')
-    });
-  }
-  
-  return dedupeJobsByMiniKey_(jobs);
-}
-
-
-
-
-function absolutizeEuUrl_(url) {
-  if (!url) return "";
-  if (/^https?:\/\//i.test(url)) return url;
-  if (url.startsWith("/")) return "https://eu-careers.europa.eu" + url;
-  return "https://eu-careers.europa.eu/" + url;
-}
-
-function parseEuDate_(text) {
-  if (!text) return "";
-  
-  const m = String(text).match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  if (!m) return "";
-  
-  return new Date(
-  Number(m[3]),
-  Number(m[2]) - 1,
-  Number(m[1])
-  );
-}
-
-function parseEuDeadline_(text) {
-  if (!text) return "";
-  
-  const m = String(text).match(/(\d{2})\/(\d{2})\/(\d{4})(?:\s*-\s*(\d{2}):(\d{2}))?/);
-  if (!m) return "";
-  
-  return new Date(
-  Number(m[3]),
-  Number(m[2]) - 1,
-  Number(m[1]),
-  Number(m[4] || 0),
-  Number(m[5] || 0),
-  0
-  );
-}
-
-
-
-function scanEuCareersJobsToAll(runId) {
-  runId = runId || Utilities.getUuid();
-  setupJobSheets_();
-
-  const rows = [];
-  const pagesToScan = 3;
-  let itemsSeen = 0;
-  let parsedJobsCount = 0;
-
-  const sources = [
-    {
-      label: 'Crawler/EU',
-      buildUrl: buildEuCareersUrl_,
-      kind: 'commission'
-    },
-    {
-      label: 'Crawler/EU-other',
-      buildUrl: buildEuOtherUrl_,
-      kind: 'other'
-    }
-  ];
-
-  sources.forEach(src => {
-    for (let page = 0; page < pagesToScan; page++) {
-      const url = src.buildUrl(page);
-      const html = fetchWithRetry_(url).getContentText();
-
-      const jobs = extractEuCareersJobsFromHtml_(html, src.kind);
-
-      itemsSeen += jobs.length;
-      parsedJobsCount += jobs.length;
-
-      jobs.forEach(job => {
-        rows.push(normalizeJobRecord_({
-          source: 'EUCAREERS',
-          source_label: src.label,
-          mail_date: job.publication_date || new Date(),
-          deadline: job.deadline || '',
-          first_seen_at: new Date(),
-          last_seen_at: new Date(),
-          gmail_message_id: '',
-          gmail_thread_id: '',
-          title: job.title,
-          location: job.location,
-          employer: job.employer || '',
-          percent_or_workload: '',
-          grade: job.grade || '',
-          domain: job.domain || '',
-          dg: job.dg || '',
-          url: job.url,
-          raw_snippet: job.rawSnippet || '',
-          raw_source_id: job.url,
-          run_id: runId,
-        }));
-      });
-    }
-  });
-
-  const upsertStats = upsertJobsToAll_(rows);
-  const idx = indexMap_(JOBS_ALL_COLUMNS);
-
-  let relevantCount = 0;
-  let maybeCount = 0;
-  let ignoreCount = 0;
-
-  rows.forEach(row => {
-    const category = String(row[idx.category] || '');
-    if (category === 'Relevant') relevantCount++;
-    else if (category === 'Vielleicht') maybeCount++;
-    else if (category === 'Ignorieren') ignoreCount++;
-  });
-
-  return {
-    source: 'EU',
-    mode: 'crawler',
-    label_or_endpoint: 'EU Careers / EU Other',
-    mail_threads: 0,
-    mail_messages: 0,
-    items_seen: itemsSeen,
-    jobs_parsed: parsedJobsCount,
-    rows_input_to_upsert: rows.length,
-    jobs_upserted: upsertStats.jobs_upserted,
-    new_jobs: upsertStats.new_jobs,
-    updated_jobs: upsertStats.updated_jobs,
-    relevant_count: relevantCount,
-    maybe_count: maybeCount,
-    ignore_count: ignoreCount,
-    detail_fetch_attempted: 0,
-    detail_fetch_count: 0,
-    status: 'ok',
-    message: ''
-  };
-}
-
-function rescoreEUCareers() {
-  const result = rescoreJobsAllForSource_('EUCAREERS');
-  Logger.log(JSON.stringify(result, null, 2));
-}
 
 // *****************************************
 // JOBROOM
@@ -1480,7 +1104,7 @@ function extractJobRoomJobsFromJson_(items) {
     {};
     
     const title = String(deDesc.title || '').trim();
-    const description = stripHtmlKn_(String(deDesc.description || ''));
+    const description = stripHtml_(String(deDesc.description || ''));
     
     const company = jc.company || {};
     const employment = jc.employment || {};
@@ -1570,7 +1194,7 @@ function scanJobRoomJobsToAll(runId) {
         last_seen_at: new Date(),
         gmail_message_id: '',
         gmail_thread_id: '',
-        title: job.title,
+        title: stripHtml_(job.title),
         location: job.location,
         employer: job.employer,
         percent_or_workload: job.percent_or_workload || '',
@@ -1674,12 +1298,12 @@ function extractSkyguideJobsFromHtml_(html) {
   while ((match = rowRegex.exec(cleaned)) !== null) {
     const rowHtml = match[0];
     const url = absolutizeSkyguideUrl_(match[1].trim());
-    const title = stripHtmlSkyguide_(match[2]);
+    const title = stripHtml_(match[2]);
     
     if (!url || !title) continue;
     
     const tdValues = [...rowHtml.matchAll(/<td[^>]*>\s*([\s\S]*?)\s*<\/td>/gi)]
-    .map(m => stripHtmlSkyguide_(m[1]))
+    .map(m => stripHtml_(m[1]))
     .map(s => s.replace(/\s+/g, ' ').trim())
     .filter(Boolean);
     
@@ -1838,8 +1462,8 @@ function extractEurocontrolField_(itemHtml, fieldLabel) {
     const labelMatch = liHtml.match(/<span[^>]*>\s*([^<]+?)\s*<\/span>\s*([\s\S]*)/i);
     if (!labelMatch) continue;
     
-    const label = htmlDecode_(stripHtmlZrh_(labelMatch[1])).trim();
-    const value = htmlDecode_(stripHtmlZrh_(labelMatch[2])).trim();
+    const label = htmlDecode_(stripHtml_(labelMatch[1])).trim();
+    const value = htmlDecode_(stripHtml_(labelMatch[2])).trim();
     
     if (normalizeText_(label) === normalizeText_(fieldLabel)) {
       return value;
@@ -1884,7 +1508,7 @@ function extractEurocontrolJobsFromAjaxHtml_(html) {
     const location = extractEurocontrolField_(item, 'Location');
     
     const pMatches = [...item.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)]
-    .map(m => htmlDecode_(stripHtmlZrh_(m[1])))
+    .map(m => htmlDecode_(stripHtml_(m[1])))
     .map(s => s.trim())
     .filter(Boolean);
     
@@ -2042,13 +1666,13 @@ function extractDbJobsFromSearchResultHtml_(html) {
     if (!hrefMatch || !titleMatch) return;
     
     const jobId = jobIdMatch ? jobIdMatch[1] : '';
-    const title = htmlDecode_(stripHtmlKn_(titleMatch[1])).trim();
+    const title = htmlDecode_(stripHtml_(titleMatch[1])).trim();
     const url = absolutizeDbUrl_(htmlDecode_(hrefMatch[1]));
     
     if (!title || !url) return;
     
     const liTexts = [...block.matchAll(/<li class="m-search-hit__item"[\s\S]*?>([\s\S]*?)<\/li>/gi)]
-    .map(m => htmlDecode_(stripHtmlKn_(m[1])).replace(/\s+/g, ' ').trim())
+    .map(m => htmlDecode_(stripHtml_(m[1])).replace(/\s+/g, ' ').trim())
     .filter(Boolean);
     
     let location = '';
@@ -2466,7 +2090,7 @@ function parseLhDate_(text) {
 }
 
 function cleanLhText_(text) {
-  return htmlDecode_(stripHtmlKn_(text))
+  return htmlDecode_(stripHtml_(text))
     .replace(/\u00a0/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -2866,7 +2490,11 @@ function fetchWithRetry_(url, attempts, options) {
 
       if (code >= 200 && code < 300) return res;
 
-      throw new Error('HTTP ' + code);
+      throw new Error(
+        'HTTP ' + code +
+        ' | url=' + url +
+        ' | body=' + res.getContentText().slice(0, 800)
+      );
 
     } catch (e) {
 
@@ -3203,7 +2831,7 @@ function extractMetaContentByPropertyGeneric_(html, property) {
 
 
 function extractLabeledValueFromHtmlTextGeneric_(html, label) {
-  const text = stripHtmlKn_(html);
+  const text = stripHtml_(html);
   const re = new RegExp(
     escapeRegexGeneric_(label) + '\\s*[:|-]?\\s*([^|\\n\\r]{1,120})',
     'i'
@@ -3214,7 +2842,7 @@ function extractLabeledValueFromHtmlTextGeneric_(html, label) {
 
 
 function cleanWorkdayDetailText_(text, maxLen) {
-  const cleaned = stripHtmlKn_(text)
+  const cleaned = stripHtml_(text)
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -3268,8 +2896,8 @@ function extractWorkdayJobsFromHtml_(html, sourceOptions) {
 
   while ((match = regex.exec(cleaned)) !== null) {
     const url = htmlDecode_(match[1].trim());
-    const title = htmlDecode_(stripHtmlKn_(match[2]).trim());
-    const trailing = htmlDecode_(stripHtmlKn_(match[3]).trim());
+    const title = htmlDecode_(stripHtml_(match[2]).trim());
+    const trailing = htmlDecode_(stripHtml_(match[3]).trim());
 
     const rawSourceId = extractWorkdayJobIdFromUrl_(url);
     const location = extractWorkdayLocationFromTrailingText_(trailing);
@@ -3341,12 +2969,12 @@ function extractWorkdayDetailFromHtml_(html, options) {
   }
 
   if (!employmentType) {
-    const m = stripHtmlKn_(html).match(/Employment Type:\s*([^\-|]{1,80})/i);
+    const m = stripHtml_(html).match(/Employment Type:\s*([^\-|]{1,80})/i);
     if (m) employmentType = String(m[1] || '').trim();
   }
 
   if (!department) {
-    const m = stripHtmlKn_(html).match(/Job Family:\s*([^\-|]{1,80})/i);
+    const m = stripHtml_(html).match(/Job Family:\s*([^\-|]{1,80})/i);
     if (m) department = String(m[1] || '').trim();
   }
 
@@ -3367,22 +2995,8 @@ function extractWorkdayDetailFromHtml_(html, options) {
 // *****************************************
 
 
-function stripHtmlZrh_(html) {
-  return String(html || '')
-  .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-  .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-  .replace(/<[^>]+>/g, ' ')
-  .replace(/&nbsp;/gi, ' ')
-  .replace(/&amp;/gi, '&')
-  .replace(/&quot;/gi, '"')
-  .replace(/&#39;/gi, "'")
-  .replace(/\s+/g, ' ')
-  .trim();
-}
-
-
 function extractAirbusLocationFromFollowingHtml_(htmlFragment) {
-  const text = htmlDecode_(stripHtmlKn_(htmlFragment))
+  const text = htmlDecode_(stripHtml_(htmlFragment))
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -3416,56 +3030,6 @@ function extractAirbusLocationFromFollowingHtml_(htmlFragment) {
 }
 
 
-function stripHtmlKn_(html) {
-  return String(html || '')
-  .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-  .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-  .replace(/<[^>]+>/g, ' ')
-  .replace(/&nbsp;/gi, ' ')
-  .replace(/&amp;/gi, '&')
-  .replace(/&quot;/gi, '"')
-  .replace(/&#39;/gi, "'")
-  .replace(/&uuml;/gi, 'ü')
-  .replace(/&ouml;/gi, 'ö')
-  .replace(/&auml;/gi, 'ä')
-  .replace(/&szlig;/gi, 'ß')
-  .replace(/\s+/g, ' ')
-  .trim();
-}
-
-
-
-function stripHtmlSkyguide_(html) {
-  return String(html || '')
-  .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-  .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-  .replace(/<[^>]+>/g, ' ')
-  .replace(/&nbsp;/gi, ' ')
-  .replace(/&amp;/gi, '&')
-  .replace(/&quot;/gi, '"')
-  .replace(/&#39;/gi, "'")
-  .replace(/&uuml;/gi, 'ü')
-  .replace(/&ouml;/gi, 'ö')
-  .replace(/&auml;/gi, 'ä')
-  .replace(/\s+/g, ' ')
-  .trim();
-}
-
-
-
-function stripHtmlEu_(html) {
-  return String(html || '')
-  .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-  .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-  .replace(/<[^>]+>/g, ' ')
-  .replace(/&nbsp;/gi, ' ')
-  .replace(/&amp;/gi, '&')
-  .replace(/&quot;/gi, '"')
-  .replace(/&#39;/gi, "'")
-  .replace(/\s+/g, ' ')
-  .trim();
-}
-
 
 function parseUrlQueryParams_(url) {
   const out = {};
@@ -3480,4 +3044,27 @@ function parseUrlQueryParams_(url) {
   });
 
   return out;
+}
+
+
+
+
+
+//generic html stripper (for job titles and such)
+function stripHtml_(html) {
+  return String(html || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&uuml;/gi, 'ü')
+    .replace(/&ouml;/gi, 'ö')
+    .replace(/&auml;/gi, 'ä')
+    .replace(/&szlig;/gi, 'ß')
+    .replace(/\s+/g, ' ')
+    .trim();
 }

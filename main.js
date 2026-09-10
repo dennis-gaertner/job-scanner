@@ -898,44 +898,110 @@ function buildJobsCockpit_() {
   const cockpitHeaders = JOBS_COCKPIT_COLUMNS;
   const output = [cockpitHeaders];
 
-  derived.rows.forEach(view => {
+  const jobAgeCol = cockpitHeaders.indexOf('job_age') + 1;
+  if (jobAgeCol < 1) {
+    throw new Error('buildJobsCockpit_: JOBS_COCKPIT_COLUMNS missing "job_age".');
+  }
+  const jobAgeLetter = columnToLetter_(jobAgeCol);
+
+
+  //new: write sorted version instead of sorting later
+  const sortedViews = [...derived.rows].sort((a, b) => {
+  const aVisibility = Number(a.visibility_rank || 0);
+  const bVisibility = Number(b.visibility_rank || 0);
+  if (aVisibility !== bVisibility) return aVisibility - bVisibility;
+
+  const aWork = Number(a.work_rank || 0);
+  const bWork = Number(b.work_rank || 0);
+  if (aWork !== bWork) return aWork - bWork;
+
+  const aState = Number(a.job_state_rank || 0);
+  const bState = Number(b.job_state_rank || 0);
+  if (aState !== bState) return aState - bState;
+
+  const aCategory = Number(a.category_rank || 0);
+  const bCategory = Number(b.category_rank || 0);
+  if (aCategory !== bCategory) return aCategory - bCategory;
+
+  const aScore = Number(a.final_score || 0);
+  const bScore = Number(b.final_score || 0);
+  if (aScore !== bScore) return bScore - aScore;
+
+  const aDays = a.days_to_deadline === '' || a.days_to_deadline == null
+    ? Number.POSITIVE_INFINITY
+    : Number(a.days_to_deadline);
+  const bDays = b.days_to_deadline === '' || b.days_to_deadline == null
+    ? Number.POSITIVE_INFINITY
+    : Number(b.days_to_deadline);
+  if (aDays !== bDays) return aDays - bDays;
+
+  return String(a.unique_key || '').localeCompare(String(b.unique_key || ''));
+});  
+
+
+
+
+  sortedViews.forEach(view => {
     const row = view.masterRow;
 
     const source = masterIdx.source != null ? (row[masterIdx.source] || '') : '';
     const location = masterIdx.location != null ? (row[masterIdx.location] || '') : '';
     const originalTitle = masterIdx.title != null ? (row[masterIdx.title] || '') : '';
     const employer = masterIdx.employer != null ? (row[masterIdx.employer] || '') : '';
-    const deadline = masterIdx.deadline != null ? row[masterIdx.deadline] : '';
+    //const deadline = masterIdx.deadline != null ? row[masterIdx.deadline] : '';
     const url = masterIdx.url != null ? (row[masterIdx.url] || '') : '';
 
-    const mailDate = masterIdx.mail_date != null ? row[masterIdx.mail_date] : '';
-    const firstSeenAt = masterIdx.first_seen_at != null ? row[masterIdx.first_seen_at] : '';
-    const firstSeenDisplay = mailDate || firstSeenAt || '';
+    //const mailDate = masterIdx.mail_date != null ? row[masterIdx.mail_date] : '';
+    //const firstSeenAt = masterIdx.first_seen_at != null ? row[masterIdx.first_seen_at] : '';
+    //const firstSeenAtDisplay = firstSeenAt || '';
+
+    const positiveHits = masterIdx.positive_hits != null ? (row[masterIdx.positive_hits] || '') : '';
+    const negativeHits = masterIdx.negative_hits != null ? (row[masterIdx.negative_hits] || '') : '';
+    const hardRejectHit = masterIdx.hard_reject_hit != null ? (row[masterIdx.hard_reject_hit] || '') : '';
+    const hardRejectHits = masterIdx.hard_reject_hits != null ? (row[masterIdx.hard_reject_hits] || '') : '';
 
     const manualTitle = view.manual_title || '';
     const cleanManualTitle = manualTitle ? manualTitle.trim() : '';
 
-    const displayTitle = cleanManualTitle
-      ? cleanManualTitle + ' *'
-      : originalTitle;
+    let displayTitle;
+
+    if (cleanManualTitle) {
+      displayTitle = cleanManualTitle + ' *';
+    } else if (source === 'EUCAREERS') {
+      const domain = masterIdx.domain != null ? (row[masterIdx.domain] || '') : '';
+      const rawSourceId = masterIdx.raw_source_id != null
+        ? (row[masterIdx.raw_source_id] || '')
+        : '';
+
+      displayTitle = buildEuDisplayTitle_(originalTitle, domain, rawSourceId);
+    } else {
+      displayTitle = originalTitle;
+    }
+
+    const targetRow = output.length + 1;
+    const newFlagFormula = `=IF(AND(${jobAgeLetter}${targetRow}<>"",${jobAgeLetter}${targetRow}<=Settings!$B$2),"NEW","")`;
 
     output.push([
-      '',
+      newFlagFormula,
       view.quick_flag,
       source,
       location,
       view.job_state,
       displayTitle,
       employer,
-      firstSeenDisplay,
+      view.first_seen_at_display,
       view.job_age,
-      deadline,
+      view.deadline_display,
       view.days_to_deadline,
       url,
       view.score_normalized,
       view.final_score,
       view.category,
       view.final_category,
+      positiveHits,
+      negativeHits,
+      hardRejectHit,
+      hardRejectHits,
       view.application_status,
       view.visibility_preference,
       view.manual_category,
@@ -951,40 +1017,16 @@ function buildJobsCockpit_() {
     ]);
   });
 
+  const existingFilter = cockpitSheet.getFilter();
+  if (existingFilter) {
+    existingFilter.remove();
+  }
+
+  cockpitSheet.clearContents();
+
   cockpitSheet.clearContents();
   cockpitSheet.getRange(1, 1, output.length, output[0].length).setValues(output);
   SpreadsheetApp.flush();
-
-  applyNewFlagFormulas_(cockpitSheet);
-  SpreadsheetApp.flush();
-
-  sortJobsCockpit_(cockpitSheet);
-  SpreadsheetApp.flush();
-
-
-
-
-//delme, for debugging
-const afterSort = cockpitSheet.getDataRange().getValues();
-const headers = afterSort[0];
-const stateIdx = headers.indexOf('job_state');
-const workIdx = headers.indexOf('work_rank');
-const stateRankIdx = headers.indexOf('job_state_rank');
-const titleIdx = headers.indexOf('display_title');
-const keyIdx = headers.indexOf('unique_key');
-
-Logger.log('TOP_AFTER_SORT=' + JSON.stringify(
-  afterSort.slice(1, 11).map(r => ({
-    display_title: r[titleIdx],
-    job_state: r[stateIdx],
-    work_rank: r[workIdx],
-    job_state_rank: r[stateRankIdx],
-    unique_key: r[keyIdx]
-  }))
-));
-
-
-
 
   formatJobsCockpit_(cockpitSheet);
 
@@ -1135,18 +1177,13 @@ function sortJobsCockpit_(sheet) {
   if (scoreCol > 0) sortSpecs.push({ column: scoreCol, ascending: false });
   if (daysCol > 0) sortSpecs.push({ column: daysCol, ascending: true });
 
-  Logger.log('sortSpecs=' + JSON.stringify(sortSpecs));
+  // 🔍 delme, DEBUG HIER
+  Logger.log('SORT_SPECS=' + JSON.stringify(sortSpecs));
+  Logger.log('SORT_RANGE rows=' + (range.getNumRows() - 1) + ' cols=' + range.getNumColumns());
+
 
   range.offset(1, 0, range.getNumRows() - 1, range.getNumColumns()).sort(sortSpecs);
   SpreadsheetApp.flush();
-
-  const check = sheet.getDataRange().getValues().slice(1, 11).map(r => ({
-    job_state: r[headers.indexOf('job_state')],
-    work_rank: r[headers.indexOf('work_rank')],
-    job_state_rank: r[headers.indexOf('job_state_rank')],
-    display_title: r[headers.indexOf('display_title')]
-  }));
-  Logger.log('top10 after sort=' + JSON.stringify(check));
 }
 
 
@@ -1193,7 +1230,7 @@ function loadJobsAllAndUserContext_() {
 }
 
 
-//translate master-row plus optional user-row into final view
+
 //translate master-row plus optional user-row into final view
 function buildDerivedJobViewRow_(masterRow, ctx) {
   const { masterIdx, userIdx, userMap } = ctx;
@@ -1333,6 +1370,8 @@ function buildDerivedJobViewRow_(masterRow, ctx) {
     manual_title: manualTitle,
 
     // derived extras
+    first_seen_at_display: mailDate || firstSeen || '',
+    deadline_display: deadline || '',
     job_age: jobAge,
     days_to_deadline: daysToDeadline,
 
@@ -1389,13 +1428,17 @@ function formatJobsCockpit_(sheet) {
   const quickFlagCol = headers.indexOf('quick_flag') + 1;
   const sourceCol = headers.indexOf('source') + 1;
   const locationCol = headers.indexOf('location') + 1;
-  const titleCol = headers.indexOf('title') + 1;
+  const titleCol = headers.indexOf('display_title') + 1;
   const employerCol = headers.indexOf('employer') + 1;
-  const firstSeenCol = headers.indexOf('first_seen') + 1;
+  const seenAtCol = headers.indexOf('seen_at') + 1;
   const jobAgeCol = headers.indexOf('job_age') + 1;
   const deadlineCol = headers.indexOf('deadline') + 1;
   const daysCol = headers.indexOf('days_to_deadline') + 1;
   const urlCol = headers.indexOf('url') + 1;
+  const positiveHitsCol = headers.indexOf('positive_hits') + 1;
+  const negativeHitsCol = headers.indexOf('negative_hits') + 1;
+  const hardRejectHitCol = headers.indexOf('hard_reject_hit') + 1;
+  const hardRejectHitsCol = headers.indexOf('hard_reject_hits') + 1;
   const appStatusCol = headers.indexOf('application_status') + 1;
   const visibilityPrefCol = headers.indexOf('visibility_preference') + 1;
   const visibilityRankCol = headers.indexOf('visibility_rank') + 1;
@@ -1464,9 +1507,24 @@ function formatJobsCockpit_(sheet) {
     }
   });
 
+  // --- Keyword-Spalten leicht einfärben ---
+  const explainCols = [
+    positiveHitsCol,
+    negativeHitsCol,
+    hardRejectHitCol,
+    hardRejectHitsCol
+  ].filter(c => c > 0);
+
+  explainCols.forEach(col => {
+    if (bodyRows > 0) {
+      sheet.getRange(2, col, bodyRows, 1).setBackground('#fef3c7');
+    }
+  });
+
+  
   // --- Zahl-/Datumsformate ---
-  if (firstSeenCol > 0 && bodyRows > 0) {
-    sheet.getRange(2, firstSeenCol, bodyRows, 1).setNumberFormat('dd.mm.yyyy');
+  if (seenAtCol > 0 && bodyRows > 0) {
+    sheet.getRange(2, seenAtCol, bodyRows, 1).setNumberFormat('dd.mm.');
   }
 
   if (jobAgeCol > 0 && bodyRows > 0) {
@@ -1486,7 +1544,7 @@ function formatJobsCockpit_(sheet) {
   }
 
   if (deadlineCol > 0 && bodyRows > 0) {
-    sheet.getRange(2, deadlineCol, bodyRows, 1).setNumberFormat('dd.mm.yyyy');
+    sheet.getRange(2, deadlineCol, bodyRows, 1).setNumberFormat('dd.mm.');
   }
 
   if (daysCol > 0 && bodyRows > 0) {
@@ -1509,14 +1567,18 @@ function formatJobsCockpit_(sheet) {
   if (jobStateRankCol > 0) sheet.setColumnWidth(jobStateRankCol, 70);
   if (titleCol > 0) sheet.setColumnWidth(titleCol, 260);
   if (employerCol > 0) sheet.setColumnWidth(employerCol, 150);
-  if (firstSeenCol > 0) sheet.setColumnWidth(firstSeenCol, 80);
-  if (jobAgeCol > 0) sheet.setColumnWidth(jobAgeCol, 55);
-  if (deadlineCol > 0) sheet.setColumnWidth(deadlineCol, 80);
-  if (daysCol > 0) sheet.setColumnWidth(daysCol, 30);
+  if (seenAtCol > 0) sheet.setColumnWidth(seenAtCol, 60);
+  if (jobAgeCol > 0) sheet.setColumnWidth(jobAgeCol, 40);
+  if (deadlineCol > 0) sheet.setColumnWidth(deadlineCol, 60);
+  if (daysCol > 0) sheet.setColumnWidth(daysCol, 40);
 
   if (urlCol > 0) sheet.setColumnWidth(urlCol, 65);
   if (scoreNormCol > 0) sheet.setColumnWidth(scoreNormCol, 70);
   if (finalScoreCol > 0) sheet.setColumnWidth(finalScoreCol, 70);
+  if (positiveHitsCol > 0) sheet.setColumnWidth(positiveHitsCol, 180);
+  if (negativeHitsCol > 0) sheet.setColumnWidth(negativeHitsCol, 160);
+  if (hardRejectHitCol > 0) sheet.setColumnWidth(hardRejectHitCol, 140);
+  if (hardRejectHitsCol > 0) sheet.setColumnWidth(hardRejectHitsCol, 160);
   if (manualCategoryCol > 0) sheet.setColumnWidth(manualCategoryCol, 70);
   if (manualDeltaCol > 0) sheet.setColumnWidth(manualDeltaCol, 70);
   if (learnCol > 0) sheet.setColumnWidth(learnCol, 70);
@@ -1657,14 +1719,11 @@ function formatJobsCockpit_(sheet) {
 
 
 
-function applyNewFlagFormulas_(sheet) {
-  const range = sheet.getDataRange();
-  const values = range.getValues();
-  const numRows = values.length;
-
+function applyNewFlagFormulas_(sheet, totalRows) {
+  const numRows = totalRows || sheet.getLastRow();
   if (numRows < 2) return;
 
-  const headers = values[0];
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
 
   const newCol = headers.indexOf('new_flag') + 1;
   const jobAgeCol = headers.indexOf('job_age') + 1;
@@ -1673,7 +1732,6 @@ function applyNewFlagFormulas_(sheet) {
 
   const jobAgeLetter = columnToLetter_(jobAgeCol);
 
-  // Settings!B2 enthält new_threshold_days
   const formulas = [];
   for (let r = 2; r <= numRows; r++) {
     formulas.push([

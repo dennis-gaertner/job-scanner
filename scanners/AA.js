@@ -510,7 +510,7 @@ function extractAaJobsFromHtml_(html) {
     
     const titleAnchorMatch = block.match(/<a[^>]*href="https:\/\/www\.arbeitsagentur\.de\/jobsuche\/jobdetail\/[^"]+"[^>]*>([\s\S]*?)<\/a>/i);
     const title = titleAnchorMatch
-      ? htmlDecode_(stripHtmlKn_(titleAnchorMatch[1]).replace(/^\d+\.\s*/, '').trim())
+      ? htmlDecode_(stripHtml_(titleAnchorMatch[1]).replace(/^\d+\.\s*/, '').trim())
       : '';
     
     const employerMatch = block.match(/<p[^>]*>\s*([^<]+?)\s*<\/p>/i);
@@ -692,7 +692,7 @@ function enrichAaJobFromDetailPage_(job) {
 
 
 function buildAaApiSearchUrl_(searchParams, page, size) {
-  const base = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs';
+  const base = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs';
 
   const params = Object.assign({}, searchParams || {});
   params.page = page || 1;
@@ -753,27 +753,41 @@ function fetchAaApiPage_(searchParams, page, size) {
 
 function extractAaJobsFromApiResponse_(json) {
   const jobs = [];
-  const items = (json && json.stellenangebote) || [];
+  const items = (json && json.ergebnisliste) || [];
 
   items.forEach(item => {
-    const refnr = String(item.refnr || '').trim();
-    const hashId = String(item.hashId || '').trim();
+    const refnr = String(item.referenznummer || '').trim();
 
-    const ort = item.arbeitsort || {};
+    const locations = Array.isArray(item.stellenlokationen)
+      ? item.stellenlokationen
+      : [];
+
+    const adresse =
+      locations.length && locations[0] && locations[0].adresse
+        ? locations[0].adresse
+        : {};
+
     const location = [
-      ort.plz,
-      ort.ort,
-      ort.region
+      adresse.plz,
+      adresse.ort,
+      adresse.region
     ].filter(Boolean).join(' ').trim();
 
-    const title = String(item.titel || item.beruf || '').trim();
-    const employer = String(item.arbeitgeber || '').trim();
-    const publicationDate = item.aktuelleVeroeffentlichungsdatum
-      ? new Date(item.aktuelleVeroeffentlichungsdatum)
+    const title = String(
+      item.stellenangebotsTitel ||
+      item.hauptberuf ||
+      ''
+    ).trim();
+
+    const employer = String(item.firma || '').trim();
+
+    const publicationDate = item.datumErsteVeroeffentlichung
+      ? new Date(item.datumErsteVeroeffentlichung)
       : new Date();
 
     const url = refnr
-      ? 'https://www.arbeitsagentur.de/jobsuche/jobdetail/' + encodeURIComponent(refnr)
+      ? 'https://www.arbeitsagentur.de/jobsuche/jobdetail/' +
+        encodeURIComponent(refnr)
       : '';
 
     jobs.push({
@@ -788,12 +802,12 @@ function extractAaJobsFromApiResponse_(json) {
       publication_date: publicationDate,
       url,
       rawSnippet: JSON.stringify({
-        titel: item.titel,
-        beruf: item.beruf,
-        arbeitgeber: item.arbeitgeber,
-        refnr: item.refnr
+        titel: item.stellenangebotsTitel,
+        beruf: item.hauptberuf,
+        arbeitgeber: item.firma,
+        refnr: item.referenznummer
       }),
-      raw_source_id: refnr || hashId || url
+      raw_source_id: refnr || url
     });
   });
 
@@ -814,3 +828,11 @@ function dedupeAaJobsBySourceId_(jobs) {
 }
 
 
+function rescoreAaCitiesTest_() {
+  const result = rescoreSheetBySpreadsheetId_(
+    CONFIG.testSink.spreadsheetId,
+    CONFIG.testSink.sheets.aaCities
+  );
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}

@@ -32,24 +32,30 @@ const CONFIG = {
   scoring: {
     bundde: {
       positiveKeywords: {
-        'ökonom': 12,
-        'oekonom': 12,
-        'analyse': 7,
-        'analyst': 8,
-        'strategie': 9,
+        'ökonom*': 12,
+        'oekonom*': 12,
+        'wirtschaft*': 9,
+        'analys*': 7,
+        'strateg*': 9,
         'steuerung': 5,
         'grundsatz': 4,
+        'planung': 3,
         'daten': 4,
         'data': 4,
         'modell': 6,
-        'wissenschaftlich': 4,
-        'wissenschaftliche': 4,
+        'wissenschaft*': 4,
         'forschung': 3,
         'digitalpolitik': 4,
         'verwaltungsdigitalisierung': 5,
         'finanzen': 4,
         'haushalt': 4,
         'referent*': 4,
+        'leiter*':3,
+        'leitung*':3,
+        'infrastruktur':4,
+        'öpnv*':3,
+        'verkehr*':3,
+        'tarif*':3,
       },
       negativeKeywords: {
         'pflege': -8,
@@ -653,7 +659,8 @@ const CONFIG = {
         'mechanic',
         'technician',
         'apprenti*',
-        're:\\balt\\s+2026\\b'
+        're:\\balt\\s+2026\\b',
+        'VIE'
       ],
       thresholds: {
         relevant: 8,
@@ -1025,7 +1032,8 @@ const CONFIG = {
         'network manager': 2
       },
       hardReject: [
-        'assistant'
+        'assistant',
+        'traineeship'
       ],
       thresholds: {
         relevant: 8,
@@ -1048,9 +1056,6 @@ const CONFIG = {
         'pricing': 5,
         'preis': 4,
         'tarif': 4,
-        'strategie': 4,
-        'strategisch': 4,
-        'strategy': 4,
         'analyse': 4,
         'analyst': 4,
         'marktanalyse': 4,
@@ -1373,8 +1378,9 @@ const CONFIG = {
 
     hardReject: [
       'hochschulprakt*',
-      'praktikant',
-      'werkstudent',
+      'praktikant*',
+      'werkstudent*',
+      'postdoktorand*',
       'working student',
       'internship',
       'stagiaire',
@@ -1388,10 +1394,10 @@ const CONFIG = {
       'mechatroniker*',
       'installateur*',
       'monteur*',
-      'schreiner',
-      'sanitär',
-      'lackierer',
-      'baumaschinenführer',
+      'schreiner*',
+      'sanitär*',
+      'lackierer*',
+      'baumaschinenführer*',
       'automobilfachmann',
 
       'koch',
@@ -1577,7 +1583,7 @@ const JOBS_COCKPIT_COLUMNS = [
   'job_state',
   'display_title', // ← statt 'title'
   'employer',
-  'first_seen',
+  'seen_at',
   'job_age',
   'deadline',
   'days_to_deadline',
@@ -1586,6 +1592,10 @@ const JOBS_COCKPIT_COLUMNS = [
   'final_score',
   'category',
   'final_category',
+  'positive_hits',
+  'negative_hits',
+  'hard_reject_hit',
+  'hard_reject_hits',
   'application_status',
   'visibility_preference',
   'manual_category',

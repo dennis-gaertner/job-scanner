@@ -25,6 +25,8 @@ function scanStadtWienJobsToAll(runId, target) {
   const rawJobs = fetchStadtWienJobs_();
   Logger.log('StadtWien fetched jobs: ' + rawJobs.length);
 
+
+
   if (!rawJobs.length) {
     const emptyResult = {
       source: 'StadtWien',
@@ -52,6 +54,7 @@ function scanStadtWienJobsToAll(runId, target) {
     const job = mapStadtWienJobToJobRecord_(rawJob, runId, now);
     return normalizeJobRecord_(job);
   });
+
 
   const upsertStats = target === 'test'
     ? upsertRowsToSheetByName_(
@@ -172,15 +175,27 @@ function mapStadtWienJobToJobRecord_(job, runId, now) {
   const title = String(jf.jobTitle || '').trim();
   const employer = String(jf.SDPTNAMELEVEL2 || 'Stadt Wien').trim();
 
+  const detailUrl = buildStadtWienDetailUrl_({
+  id: rawSourceId,
+  title: title
+});
+
+
+
+
+
   return {
     source: 'StadtWien',
     source_label: 'Stadt Wien',
     raw_source_id: rawSourceId,
-    url: String(jf.applicationUrl || buildStadtWienDetailUrl_(rawSourceId, title)).trim(),
+    url: buildStadtWienDetailUrl_({
+      id: rawSourceId,
+      title: title
+    }),
     title: title,
     employer: employer,
     location: 'Wien',
-    mail_date: parseUnixMillisToDateOrBlank_(jf.DPOSTINGSTART),
+    mail_date: now,//parseUnixMillisToDateOrBlank_(jf.DPOSTINGSTART), //no longer supplied, 9.5.2026
     deadline: parseUnixMillisToDateOrBlank_(jf.DPOSTINGEND),
     percent_or_workload: '',
     grade: '',
@@ -190,7 +205,8 @@ function mapStadtWienJobToJobRecord_(job, runId, now) {
     detail_text: extractStadtWienDetailText_(job),
     first_seen_at: now,
     last_seen_at: now,
-    run_id: runId || ''
+    run_id: runId || '',
+    url: detailUrl,
   };
 }
 
@@ -206,8 +222,8 @@ function extractStadtWienDetailText_(job) {
 
   return customFields
     .map(f => {
-      const title = stripHtmlKn_(f.title || '');
-      const content = stripHtmlKn_(f.content || '');
+      const title = stripHtml_(f.title || '');
+      const content = stripHtml_(f.content || '');
       return [title, content].filter(Boolean).join(': ');
     })
     .filter(Boolean)
@@ -261,3 +277,15 @@ function parseStadtWienDateToDateOrBlank_(value) {
 }
 
 
+
+
+
+
+function rescoreStadtWienTest_() {
+  const result = rescoreSheetBySpreadsheetId_(
+    CONFIG.testSink.spreadsheetId,
+    CONFIG.testSink.sheets.stadtWien
+  );
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
