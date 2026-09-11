@@ -337,17 +337,6 @@ function scanEuCareersJobsToAll(runId) {
   const upsertStats = upsertJobsToAll_(rows);
   const idx = indexMap_(JOBS_ALL_COLUMNS);
 
-  let relevantCount = 0;
-  let maybeCount = 0;
-  let ignoreCount = 0;
-
-  rows.forEach(row => {
-    const category = String(row[idx.category] || '');
-    if (category === 'Relevant') relevantCount++;
-    else if (category === 'Vielleicht') maybeCount++;
-    else if (category === 'Ignorieren') ignoreCount++;
-  });
-
   return {
     source: 'EU',
     mode: 'crawler',
@@ -356,13 +345,7 @@ function scanEuCareersJobsToAll(runId) {
     mail_messages: 0,
     items_seen: itemsSeen,
     jobs_parsed: parsedJobsCount,
-    rows_input_to_upsert: rows.length,
-    jobs_upserted: upsertStats.jobs_upserted,
-    new_jobs: upsertStats.new_jobs,
-    updated_jobs: upsertStats.updated_jobs,
-    relevant_count: relevantCount,
-    maybe_count: maybeCount,
-    ignore_count: ignoreCount,
+    ...buildScanStats_(rows, upsertStats, idx),
     detail_fetch_attempted: 0,
     detail_fetch_count: 0,
     status: 'ok',

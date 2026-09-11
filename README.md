@@ -26,6 +26,7 @@ Scanners parse source-specific data, call `normalizeJobRecord_()` (scoring, iden
 | `core/schemas.js`, `core/state.js` | Column definitions, execution state and archive switch |
 | `core/job-model.js`, `core/job-identity.js`, `core/job-store.js` | Job object construction, stable identity, normalisation and storage |
 | `core/derived-jobs.js` | Master/user join and final derived job values |
+| `core/scan-stats.js` | Shared scanner row counts, storage totals and category counts |
 | Other `core/` files | Shared sheet, text, date, settings, fetch/mail and logging helpers |
 | `scanners/scanners-main.js` | Full scan orchestration |
 | Source files under `scanners/` | Source-specific collection and parsing |
@@ -72,3 +73,34 @@ Baseline Git commit: `7e07dfa` (user-confirmed). The supplied ZIP was the source
 6. In Apps Script, run `validateCoreSheetSchemas()`, then rebuild the job cockpit, scoring cockpit and source health. Check formatting, rankings and persistence of a reversible cockpit edit.
 7. Observe the next normal scheduled scan and notification cycle; a manual full scan also sends email and may archive jobs under the existing settings.
 8. Commit the refactor after review. Live Apps Script, Gmail, Sheets and source endpoints were not executed during this refactor.
+
+
+## Second refactor pass — 2026-09-11
+
+Consolidated repeated bookkeeping in 19 scanner functions into `buildScanStats_()` in `core/scan-stats.js`. Each scanner supplies its rows, upsert result and category index; the helper returns seven shared numeric result fields. Source-specific metadata, optional fields, detail-fetch counters, status, messages and logging remain in each scanner. This includes production, test-sink and legacy scanner functions, without changing which ones run.
+
+Category counts still describe the input rows, including duplicates. Storage totals still come from the existing upsert implementation. Empty/unknown categories remain uncounted; category matching remains case- and whitespace-sensitive. The helper runs after upsert, as the previous blocks did. No new defaults or extra fields are added to scanner results. Early returns remain unchanged.
+
+Validation: 313 existing functions unchanged; fetching, parsing, normalisation and storage prefixes and trailing logging of the 19 changed functions unchanged; 152 complete scanner-result comparisons passed across eight fixtures per function. Checks include duplicate input versus stored totals, empty input, missing and unrecognised categories, updates and absent totals. This verifies the result-building sections using fixture inputs, not live endpoint responses. Configuration, deployment files and non-scanner JavaScript remain unchanged.
+
+Use `tests/verify-scan-stats.cjs` for this pass. The older `verify-refactor.cjs` is specific to the first structural pass and intentionally requires identical function bodies; it is not the test for this second pass.
+
+### Install this pass
+
+Before copying the new files, from your clean, merged `main` checkout:
+
+```powershell
+git archive --format=zip --output=../job-scanner-structure-baseline.zip HEAD
+Expand-Archive ../job-scanner-structure-baseline.zip ../job-scanner-structure-baseline -Force
+git switch -c refactor/scan-stats
+```
+
+Extract the new package outside the repository and merge its `job-scanner` contents into the checkout, replacing files. Then run:
+
+```powershell
+node tests/verify-scan-stats.cjs ../job-scanner-structure-baseline .
+git diff --stat
+git status
+```
+
+After review, upload using the existing clasp workflow and observe a normal scan, including Scan_Log/source health and notification results. The full scan retains its email and archive side effects. Commit and push the branch after validation. This pass has not been uploaded to Apps Script or run against live sources here.
