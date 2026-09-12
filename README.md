@@ -104,3 +104,32 @@ git status
 ```
 
 After review, upload using the existing clasp workflow and observe a normal scan, including Scan_Log/source health and notification results. The full scan retains its email and archive side effects. Commit and push the branch after validation. This pass has not been uploaded to Apps Script or run against live sources here.
+
+
+## Third refactor pass — 2026-09-12
+
+Production `upsertJobsToAll_()` and test `upsertRowsToSheetByName_()` now delegate to `upsertJobRows_()` in `core/upsert.js`. The wrappers retain their destination lookup and missing-sheet errors. A test-only flag preserves the existing empty-URL warning after updating a row. Destination lookup is deferred until after deduplication and the empty-input return.
+
+The shared implementation preserves merge precedence, input-row mutation, duplicate handling, row-write order, append batching, return statistics and failure propagation. Existing timestamps, notification and archive fields retain the same rules. This pass does not batch existing-row updates or change header handling. Those would change behaviour and are separate work. No intake sheet or scheduling changes are introduced; the shared storage function provides a clearer boundary for that later architecture.
+
+Validation: 42 complete entry-point comparisons (21 scenarios for each production/test path), checking final rows, input mutation, spreadsheet call/write order, warnings, totals, repeated execution and errors. Fixtures include empty input, mixed updates/inserts, duplicate input and stored keys, blank fields, missing/reordered headers, missing destination and injected open/write failures. All 331 other existing functions are unchanged. Google services are mocked; live validation remains necessary. Text comparison normalises CRLF/LF.
+
+### Install this pass
+
+From the clean checkout containing the merged scanner-statistics refactor, before copying files:
+
+```powershell
+git archive --format=zip --output=../job-scanner-upsert-baseline.zip HEAD
+Expand-Archive ../job-scanner-upsert-baseline.zip ../job-scanner-upsert-baseline -Force
+git switch -c refactor/shared-upsert
+```
+
+Extract the package outside the repository and merge its `job-scanner` contents into the checkout, replacing files. Then run:
+
+```powershell
+node tests/verify-upsert.cjs ../job-scanner-upsert-baseline .
+git --no-pager diff --stat
+git status
+```
+
+The previous two verifiers apply to their respective earlier refactor passes; use `verify-upsert.cjs` for this pass. After review, use the existing clasp upload workflow and validate a production scan and the test-sink workflow as appropriate. The production scan still sends notifications and may archive jobs. Commit and merge after validation.
