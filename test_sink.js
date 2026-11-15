@@ -1,7 +1,21 @@
-function runTestSinkScanners(){
-  scanBundAtJobsToAll('test-bundat', 'test');
-  scanStadtWienJobsToAll('test-stadtwien', 'test');
-  scanAaCitiesCrawlerJobsToAll('test-aacities', 'test');
+function runTestSinkScanners() {
+  const scanners = [
+    ['BundAT', () => scanBundAtJobsToAll('test-bundat', 'test')],
+    ['StadtWien', () => scanStadtWienJobsToAll('test-stadtwien', 'test')],
+    ['AA-Cities', () => scanAaCitiesCrawlerJobsToAll('test-aacities', 'test')]
+  ];
+
+  for (const [name, scan] of scanners) {
+    Logger.log('TestSink START: ' + name);
+
+    try {
+      scan();
+      Logger.log('TestSink OK: ' + name);
+    } catch (e) {
+      Logger.log('TestSink FAILED: ' + name + ' | ' + e.stack);
+      throw e;
+    }
+  }
 
   sortAllTestSinkSheetsForReview_();
 }

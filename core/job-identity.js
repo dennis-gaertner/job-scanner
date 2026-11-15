@@ -37,6 +37,22 @@ function buildUniqueKey_(source, title, employer, location, url, rawSourceId) {
     }
   }
 
+  // EU Careers: stable vacancy reference instead of title or URL.
+  if (src === 'eucareers' && rawId && !/^https?:\/\//i.test(rawId)) {
+    const raw = [src, rawId]
+      .map(v => normalizeKeyPart_(v))
+      .join('|');
+
+    const digest = Utilities.computeDigest(
+      Utilities.DigestAlgorithm.MD5,
+      raw
+    );
+
+    return digest
+      .map(b => ('0' + (b & 0xFF).toString(16)).slice(-2))
+      .join('');
+  }
+
   if (rawId && ['airbus', 'kn', 'aa-kn', 'aa-cities', 'bundat', 'stadtwien'].includes(src)) {
     const raw = [src, rawId].map(v => normalizeKeyPart_(v)).join('|');
     const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw);

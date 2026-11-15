@@ -934,11 +934,13 @@ function getArchiveDecision_(row, idx, userRow, userIdx, now) {
   }
 
   const staleBaseDate =
-    idx.mail_date != null && row[idx.mail_date] instanceof Date
-      ? row[idx.mail_date]
+    idx.last_seen_at != null && row[idx.last_seen_at] instanceof Date
+      ? row[idx.last_seen_at]
       : idx.first_seen_at != null && row[idx.first_seen_at] instanceof Date
         ? row[idx.first_seen_at]
-        : null;
+        : idx.mail_date != null && row[idx.mail_date] instanceof Date
+          ? row[idx.mail_date]
+          : null;
 
   if (staleBaseDate && staleBaseDate < cutoffStale) {
     return { shouldArchive: true, reason: 'stale_no_deadline' };

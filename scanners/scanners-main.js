@@ -91,10 +91,6 @@ function scanAllJobSources() {
   safeRun_(() => scanJobRoomJobsToAll(runId), 'JobRoom');
   safeRun_(() => scanDbJobsToAll(runId), 'DB');
 
-Logger.log('BEFORE emailNewRelevantJobs');
-emailNewRelevantJobs(runId);
-Logger.log('AFTER emailNewRelevantJobs');
-
 Logger.log('BEFORE formatJobsAllScoreColumns_');
 formatJobsAllScoreColumns_();
 Logger.log('AFTER formatJobsAllScoreColumns_');

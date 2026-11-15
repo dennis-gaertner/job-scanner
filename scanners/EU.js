@@ -276,63 +276,278 @@ function parseEuDeadline_(text) {
 
 
 
+
+function extractEuJobsFromNewListing_(html) {
+  const jobs = [];
+  const text = String(html || '');
+
+  // Each result starts with its own vacancy-result container.
+  const startRegex = /<div\b[^>]*class="[^"]*\beujmp-vacancy-result\b[^"]*"[^>]*>/gi;
+  const starts = [...text.matchAll(startRegex)];
+
+  for (let i = 0; i < starts.length; i++) {
+    const start = starts[i].index;
+    const end = i + 1 < starts.length
+      ? starts[i + 1].index
+      : Math.min(text.length, start + 3000);
+
+    const block = text.slice(start, end);
+
+    const link = block.match(
+      /<a\b[^>]*href="([^"]*\/jobs\/[^"]+_en)"[^>]*>([\s\S]*?)<\/a>/i
+    );
+    if (!link) continue;
+
+    const url = absolutizeEuUrl_(htmlDecode_(link[1]));
+    const title = htmlDecode_(stripHtml_(link[2])).trim();
+
+    const top = block.match(
+      /<ul\b[^>]*class="[^"]*eujmp-vacancy-result__top-meta[^"]*"[^>]*>([\s\S]*?)<\/ul>/i
+    );
+    const bottom = block.match(
+      /<ul\b[^>]*class="[^"]*eujmp-vacancy-result__bottom-meta[^"]*"[^>]*>([\s\S]*?)<\/ul>/i
+    );
+
+    const listValues = markup => markup
+      ? [...markup.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)]
+          .map(m => htmlDecode_(stripHtml_(m[1]))
+            .replace(/\s+/g, ' ').trim())
+      : [];
+
+    const topValues = listValues(top && top[1]);
+    const bottomValues = listValues(bottom && bottom[1]);
+
+    const published = top && top[1].match(
+      /<time\b[^>]*datetime="([^"]+)"/i
+    );
+
+    if (!title || !url) continue;
+
+    jobs.push({
+      title,
+      url,
+      employer: topValues[0] || '',
+      publication_date: '',
+        listing_deadline: published && published[1]
+          ? new Date(published[1])
+          : '',
+      contract_type: bottomValues[0] || '',
+      grade: bottomValues[1] || '',
+      location: bottomValues[2] || ''
+    });
+  }
+
+  return jobs;
+}
+
+
+function extractEuDetailField_(html, label) {
+  const escapeRegex = s =>
+    s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  const re = new RegExp(
+    '<strong>\\s*' + escapeRegex(label) +
+    ':\\s*<\\/strong>\\s*([\\s\\S]*?)<\\/p>',
+    'i'
+  );
+
+  const match = String(html || '').match(re);
+  return match
+    ? htmlDecode_(stripHtml_(match[1])).replace(/\s+/g, ' ').trim()
+    : '';
+}
+
+
+function extractEuJobFromNewDetail_(html, listingJob) {
+  const text = String(html || '');
+
+  const deadlineMatch = text.match(
+    /<strong>\s*Application deadline:\s*<\/strong>\s*<time\b[^>]*datetime="([^"]+)"/i
+  );
+
+  const deadline = deadlineMatch
+    ? new Date(deadlineMatch[1])
+    : listingJob.listing_deadline || '';
+
+  const ogTitle = text.match(
+    /<meta\s+property="og:title"\s+content="([^"]+)"/i
+  );
+
+  return {
+    ...listingJob,
+    title: ogTitle
+      ? htmlDecode_(ogTitle[1]).trim()
+      : listingJob.title,
+    reference: extractEuDetailField_(text, 'Reference'),
+    employer: extractEuDetailField_(text, 'Institution') ||
+      listingJob.employer,
+    location: extractEuDetailField_(text, 'Location') ||
+      listingJob.location,
+    domain: extractEuDetailField_(text, 'Domain'),
+    contract_type: extractEuDetailField_(text, 'Contract type') ||
+      listingJob.contract_type,
+    grade: extractEuDetailField_(text, 'Grade') ||
+      listingJob.grade,
+    unit: extractEuDetailField_(text, 'Unit'),
+    dg: extractEuDetailField_(
+      text, 'Directorate-General or Department'
+    ),
+    deadline
+  };
+}
+
+
+// Explicit DG and unit take priority over generic domains.
+function buildEuDisplayTitleFromDetails_(job) {
+  const title = String(job.title || '').trim();
+  const dg = String(job.dg || '').trim();
+  const unit = String(job.unit || '').trim();
+
+  if (!title) return '';
+
+  const extras = [];
+
+  if (dg && !title.toLowerCase().includes(dg.toLowerCase())) {
+    extras.push(dg);
+  }
+
+  if (unit &&
+      !title.toLowerCase().includes(unit.toLowerCase())) {
+    extras.push(unit);
+  }
+
+  return extras.length
+    ? title + ' – ' + extras.join(' / ')
+    : title;
+}
+
+
+// Collect rows, without writing to Jobs_All.
+function collectEuCareersRows_(runId, pagesToScan) {
+  const listingJobs = [];
+  const seenUrls = new Set();
+
+  for (let page = 0; page < pagesToScan; page++) {
+    const url =
+      'https://eu-careers.europa.eu/jobs_en' +
+      '?sort%5Bname%5D=published_at' +
+      '&sort%5Bdirection%5D=DESC' +
+      '&page=' + page;
+    const html = fetchWithRetry_(url).getContentText();
+    const jobs = extractEuJobsFromNewListing_(html);
+
+    if (!jobs.length) {
+      throw new Error(
+        'EU listing parser found zero jobs on page ' + page +
+        ': ' + url
+      );
+    }
+
+    jobs.forEach(job => {
+      if (!seenUrls.has(job.url)) {
+        seenUrls.add(job.url);
+        listingJobs.push(job);
+      }
+    });
+  }
+
+  const detailedJobs = [];
+  const batchSize = 10;
+
+  for (let start = 0; start < listingJobs.length; start += batchSize) {
+    const batch = listingJobs.slice(start, start + batchSize);
+
+    const requests = batch.map(job => ({
+      url: job.url,
+      muteHttpExceptions: true,
+      followRedirects: true
+    }));
+
+    const responses = UrlFetchApp.fetchAll(requests);
+
+    responses.forEach((response, i) => {
+      const job = batch[i];
+      const status = response.getResponseCode();
+
+      if (status !== 200) {
+        Logger.log('EU detail HTTP ' + status + ': ' + job.url);
+        return;
+      }
+
+      const html = response.getContentText();
+      const detailed = extractEuJobFromNewDetail_(html, job);
+
+      if (!detailed.employer) {
+        Logger.log('EU detail missing institution: ' + job.url);
+        return;
+      }
+
+      detailedJobs.push(detailed);
+    });
+  }
+
+  if (!detailedJobs.length) {
+    throw new Error('EU: no detail pages parsed successfully.');
+  }
+
+  const now = new Date();
+
+  const rows = detailedJobs.map(job => {
+    const isCommission =
+      job.employer.trim().toLowerCase() === 'european commission';
+
+    const title = buildEuDisplayTitleFromDetails_(job);
+
+    return normalizeJobRecord_({
+      source: 'EUCAREERS',
+      source_label: isCommission
+        ? 'Crawler/EU'
+        : 'Crawler/EU-other',
+      mail_date: job.publication_date || '',
+      deadline: job.deadline || '',
+      first_seen_at: now,
+      last_seen_at: now,
+      gmail_message_id: '',
+      gmail_thread_id: '',
+      title,
+      location: job.location,
+      employer: job.employer,
+      percent_or_workload: '',
+      grade: job.grade,
+      domain: job.domain || '',
+      dg: job.dg || '',
+      url: job.url,
+      raw_snippet: [
+        job.title,
+        job.employer,
+        job.location,
+        job.domain,
+        job.dg,
+        job.unit,
+        job.contract_type,
+        job.grade,
+        job.reference
+      ].filter(Boolean).join(' | '),
+      raw_source_id: job.reference || job.url,
+      run_id: runId
+    });
+  });
+
+  return {
+    rows,
+    listingsFound: listingJobs.length,
+    detailsParsed: detailedJobs.length
+  };
+}
+
+
+// Retains the existing nightly scanner entry point.
 function scanEuCareersJobsToAll(runId) {
   runId = runId || Utilities.getUuid();
   setupJobSheets_();
 
-  const rows = [];
-  const pagesToScan = 3;
-  let itemsSeen = 0;
-  let parsedJobsCount = 0;
-
-  const sources = [
-    {
-      label: 'Crawler/EU',
-      buildUrl: buildEuCareersUrl_,
-      kind: 'commission'
-    },
-    {
-      label: 'Crawler/EU-other',
-      buildUrl: buildEuOtherUrl_,
-      kind: 'other'
-    }
-  ];
-
-  sources.forEach(src => {
-    for (let page = 0; page < pagesToScan; page++) {
-      const url = src.buildUrl(page);
-      const html = fetchWithRetry_(url).getContentText();
-
-      const jobs = extractEuCareersJobsFromHtml_(html, src.kind);
-
-      itemsSeen += jobs.length;
-      parsedJobsCount += jobs.length;
-
-      jobs.forEach(job => {
-        rows.push(normalizeJobRecord_({
-          source: 'EUCAREERS',
-          source_label: src.label,
-          mail_date: job.publication_date || new Date(),
-          deadline: job.deadline || '',
-          first_seen_at: new Date(),
-          last_seen_at: new Date(),
-          gmail_message_id: '',
-          gmail_thread_id: '',
-          title: buildEuDisplayTitle_(job.title, job.unit, job.dg),
-          location: job.location,
-          employer: job.employer || '',
-          percent_or_workload: '',
-          grade: job.grade || '',
-          domain: job.domain || '',
-          dg: job.dg || '',
-          url: job.url,
-          raw_snippet: job.rawSnippet || '',
-          raw_source_id: job.url,
-          run_id: runId,
-        }));
-      });
-    }
-  });
+  const result = collectEuCareersRows_(runId, 3);
+  const rows = result.rows;
 
   const upsertStats = upsertJobsToAll_(rows);
   const idx = indexMap_(JOBS_ALL_COLUMNS);
@@ -343,15 +558,57 @@ function scanEuCareersJobsToAll(runId) {
     label_or_endpoint: 'EU Careers / EU Other',
     mail_threads: 0,
     mail_messages: 0,
-    items_seen: itemsSeen,
-    jobs_parsed: parsedJobsCount,
+    items_seen: result.listingsFound,
+    jobs_parsed: result.detailsParsed,
     ...buildScanStats_(rows, upsertStats, idx),
-    detail_fetch_attempted: 0,
-    detail_fetch_count: 0,
+    detail_fetch_attempted: result.listingsFound,
+    detail_fetch_count: result.detailsParsed,
     status: 'ok',
     message: ''
   };
 }
+
+
+// Read-only test: does not write anything to Jobs_All.
+function zzz_TEST_newEuScanner_() {
+  const result = collectEuCareersRows_(
+    'TEST-' + Utilities.getUuid(),
+    1
+  );
+
+  const idx = indexMap_(JOBS_ALL_COLUMNS);
+
+  Logger.log(
+    'Listings: ' + result.listingsFound +
+    ', details: ' + result.detailsParsed +
+    ', normalized rows: ' + result.rows.length
+  );
+
+  result.rows.slice(0, 20).forEach((row, i) => {
+    const fields = [
+      'source_label',
+      'title',
+      'employer',
+      'location',
+      'domain',
+      'dg',
+      'grade',
+      'mail_date',
+      'deadline',
+      'url',
+      'raw_snippet'
+    ];
+
+    const record = {};
+
+    fields.forEach(field => {
+      record[field] = row[idx[field]];
+    });
+
+    Logger.log((i + 1) + ': ' + JSON.stringify(record));
+  });
+}
+
 
 function rescoreEUCareers() {
   const result = rescoreJobsAllForSource_('EUCAREERS');

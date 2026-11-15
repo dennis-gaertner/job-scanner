@@ -10,16 +10,22 @@ function normalizeText_(text) {
 
 function htmlDecode_(text) {
   return String(text || '')
-  .replace(/&amp;/g, '&')
-  .replace(/&quot;/g, '"')
-  .replace(/&#39;/g, "'")
-  .replace(/&uuml;/g, 'ü')
-  .replace(/&ouml;/g, 'ö')
-  .replace(/&auml;/g, 'ä')
-  .replace(/&szlig;/g, 'ß')
-  .replace(/&nbsp;/g, ' ')
-  .replace(/\s+/g, ' ')
-  .trim();
+    .replace(/&#(x[0-9a-f]+|\d+);/gi, (match, entity) => {
+      const hex = entity.toLowerCase().startsWith('x');
+      const code = parseInt(hex ? entity.slice(1) : entity, hex ? 16 : 10);
+      return code > 0 && code <= 0x10FFFF
+        ? String.fromCodePoint(code)
+        : match;
+    })
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&uuml;/gi, 'ü')
+    .replace(/&ouml;/gi, 'ö')
+    .replace(/&auml;/gi, 'ä')
+    .replace(/&szlig;/gi, 'ß')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function dedupeJobsByMiniKey_(jobs) {

@@ -1,5 +1,10 @@
 // notifications/email.js — extracted without changing function implementations.
 
+
+function sendPendingJobNotifications() {
+  emailNewRelevantJobs('');
+}
+
 function buildScanSummarySinceLastMail_(runId) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(CONFIG.sheets.jobsAll);
@@ -118,7 +123,15 @@ function emailNewRelevantJobs(runId) {
     if (view.unique_key) derivedByKey.set(view.unique_key, view);
   });
 
-  const newRecommendedViews = selectJobsForNotification_(derived.rows, jobsIdx);
+  const notifiedKeys = notifiedSheet
+  ? getNotifiedKeySet_(notifiedSheet)
+  : new Set();
+
+  const newRecommendedViews = selectJobsForNotification_(
+    derived.rows,
+    jobsIdx,
+    notifiedKeys
+  );
 
   const newRecommendedMasterRows = newRecommendedViews.map(view => view.masterRow);
   const newRecommendedRowsDedup = dedupeRowsForMail_(newRecommendedMasterRows, jobsIdx);
@@ -278,15 +291,18 @@ function emailNewRelevantJobs(runId) {
 }
 
 
-function selectJobsForNotification_(derivedRows, jobsIdx) {
+function selectJobsForNotification_(derivedRows, jobsIdx, notifiedKeys = new Set()) {
   return derivedRows.filter(view => {
     const notifiedAt = jobsIdx.notified_at != null
       ? view.masterRow[jobsIdx.notified_at]
       : '';
 
+    const uniqueKey = String(view.unique_key || '');
+
     return (
       (view.final_category === 'Relevant' || view.final_category === 'Vielleicht') &&
       !notifiedAt &&
+      !notifiedKeys.has(uniqueKey) &&
       view.visibility_preference !== 'hidden' &&
       view.job_state !== 'closed'
     );
