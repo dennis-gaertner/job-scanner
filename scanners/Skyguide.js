@@ -65,16 +65,24 @@ function extractSkyguideJobsFromHtml_(html) {
 }
 
 
-function scanSkyguideJobsToAll(runId) {
+/**
+ * Production remains the default. Stage mode fetches and stores source records
+ * without scoring or writing to Jobs_All.
+ */
+function scanSkyguideJobsToAll(runId, target) {
   runId = runId || Utilities.getUuid();
-  setupJobSheets_();
+  target = target || 'prod';
+  if (target !== 'prod' && target !== 'stage') {
+    throw new Error('Invalid Skyguide target: ' + target);
+  }
+  if (target === 'prod') setupJobSheets_();
 
   const url = buildSkyguideUrl_();
   const html = fetchWithRetry_(url).getContentText();
-
   const jobs = extractSkyguideJobsFromHtml_(html);
+  const now = new Date();
 
-  const rows = jobs.map(job => normalizeJobRecord_({
+  const rawJobs = jobs.map(job => ({
     source: 'SKYGUIDE',
     source_label: 'Crawler/Skyguide',
     mail_date: job.publication_date || new Date(),
@@ -96,6 +104,21 @@ function scanSkyguideJobsToAll(runId) {
     run_id: runId,
   }));
 
+  if (target === 'stage') {
+    const stats = stageJobRecords_('Stage_Skyguide', rawJobs);
+    return {
+      source: 'Skyguide',
+      mode: 'stage',
+      label_or_endpoint: 'Crawler/Skyguide',
+      items_seen: jobs.length,
+      jobs_parsed: jobs.length,
+      ...stats,
+      status: 'ok',
+      message: ''
+    };
+  }
+
+  const rows = rawJobs.map(normalizeJobRecord_);
   const upsertStats = upsertJobsToAll_(rows);
   const idx = indexMap_(JOBS_ALL_COLUMNS);
 
@@ -115,6 +138,17 @@ function scanSkyguideJobsToAll(runId) {
   };
 }
 
+/** Staging-only smoke test; never writes to Jobs_All. */
+function stageSkyguideJobs() {
+  const result = scanSkyguideJobsToAll(Utilities.getUuid(), 'stage');
+  Logger.log('Skyguide staging: ' + JSON.stringify(result));
+  return result;
+}
+
+/** Preview the central import without writing to Jobs_All. */
+function previewSkyguideStagingImport() {
+  return previewStagedSourceImport('Stage_Skyguide', 'SKYGUIDE');
+}
 
 
 // *****************************************

@@ -85,7 +85,7 @@ function scanAllJobSources() {
   safeRun_(() => scanAaKnJobsToAll(runId), 'AA-KN-Mail');
   safeRun_(() => scanAaKnCrawlerJobsToAll(runId), 'AA-KN-Crawler');
   safeRun_(() => scanEuCareersJobsToAll(runId), 'EU');
-  safeRun_(() => scanSkyguideJobsToAll(runId), 'Skyguide');
+  // safeRun_(() => scanSkyguideJobsToAll(runId), 'Skyguide');
   safeRun_(() => scanZrhJobsToAll(runId), 'ZRH');
   safeRun_(() => scanEurocontrolJobsToAll(runId), 'Eurocontrol');
   safeRun_(() => scanJobRoomJobsToAll(runId), 'JobRoom');

@@ -13,14 +13,14 @@ function scanBundAtJobsToAll(runId, target) {
   runId = runId || Utilities.getUuid();
   target = target || 'prod';
 
-  if (!['prod', 'test'].includes(target)) {
+  if (!['prod', 'test', 'stage'].includes(target)) {
   throw new Error('Invalid target: ' + target);
 }
 
 
   if (target === 'test') {
     setupTestJobSheets_();
-  } else {
+  } else if (target === 'prod') {
     setupJobSheets_();
   }
 
@@ -50,18 +50,23 @@ function scanBundAtJobsToAll(runId, target) {
 
   const now = new Date();
 
-  const normalizedRows = fetchedJobs.map(rawJob => {
-    const job = mapBundAtJobToJobRecord_(rawJob, runId, now);
-    return normalizeJobRecord_(job);
-  });
+  const jobs = fetchedJobs.map(rawJob =>
+    mapBundAtJobToJobRecord_(rawJob, runId, now)
+  );
 
-  const upsertStats = target === 'test'
-    ? upsertRowsToSheetByName_(
-        CONFIG.testSink.spreadsheetId,
-        CONFIG.testSink.sheets.bundAt,
-        normalizedRows
-      )
-    : upsertJobsToAll_(normalizedRows);
+  const normalizedRows = target === 'stage'
+    ? []
+    : jobs.map(normalizeJobRecord_);
+
+  const upsertStats = target === 'stage'
+    ? stageJobRecords_('Stage_BundAT', jobs)
+    : target === 'test'
+      ? upsertRowsToSheetByName_(
+          CONFIG.testSink.spreadsheetId,
+          CONFIG.testSink.sheets.bundAt,
+          normalizedRows
+        )
+      : upsertJobsToAll_(normalizedRows);
 
   const idx = indexMap_(JOBS_ALL_COLUMNS);
 
@@ -245,4 +250,15 @@ function rescoreBundAtTest_() {
   );
   Logger.log(JSON.stringify(result, null, 2));
   return result;
+}
+
+
+
+function stageBundAtJobs() {
+  const result = scanBundAtJobsToAll(
+    Utilities.getUuid(),
+    'stage'
+  );
+
+  Logger.log(JSON.stringify(result));
 }
